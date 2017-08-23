@@ -1,5 +1,14 @@
 #include "AC_Avoid.h"
 
+#define AC_AVOID_DEBUG 1
+
+#if AC_AVOID_DEBUG
+  #include <GCS_MAVLINK/GCS.h>
+  #define Debug(level, fmt, args ...)  do { if (level <= AC_AVOID_DEBUG) { GCS_MAVLINK::send_text(MAV_SEVERITY_INFO, fmt, ## args); } } while (0)
+#else
+  #define Debug(level, fmt, args ...)
+#endif
+
 const AP_Param::GroupInfo AC_Avoid::var_info[] = {
 
     // @Param: ENABLE
@@ -89,6 +98,12 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         return;
     }
 
+    {
+        float proximity_alt_diff_m;
+        _proximity.get_downward_distance(proximity_alt_diff_m);
+        Debug(1, "RAW_PRX %f", proximity_alt_diff_m);
+    }
+    Debug(1, "Entered: climb_rate_cms %f accel_cmss %f", climb_rate_cms, accel_cmss);
     // limit acceleration
     float accel_cmss_limited = MIN(accel_cmss, AC_AVOID_ACCEL_CMSS_MAX);
 
@@ -175,6 +190,7 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         // limit descend rate
         const float max_speed = get_max_speed(kP, accel_cmss_limited, alt_min_diff_cm);
         climb_rate_cms = MAX(-max_speed, climb_rate_cms);
+        Debug(1, "ADJUSTED: climb_rate_cms %f  max_speed %f", climb_rate_cms, max_speed);
     }
 }
 
