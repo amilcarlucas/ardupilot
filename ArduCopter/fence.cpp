@@ -15,8 +15,8 @@ void Copter::fence_check()
     fence.set_home_distance(home_distance*0.01f);
 
     // check for a breach
-    new_breaches = fence.check_fence(current_loc.alt/100.0f);
 
+    new_breaches = fence.check_fence(rangefinder.distance_cm_orient(ROTATION_PITCH_270)/100.0f);
     // return immediately if motors are not armed
     if(!motors->armed()) {
         return;
