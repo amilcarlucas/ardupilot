@@ -56,6 +56,9 @@ public:
     /// get_enabled_fences - returns bitmask of enabled fences
     uint8_t get_enabled_fences() const;
 
+    // the vehicle code should use this to disable low altitude fence
+    void enable_low_alt(bool value);
+
     /// pre_arm_check - returns true if all pre-takeoff checks have completed successfully
     bool pre_arm_check(const char* &fail_msg) const;
 
@@ -88,7 +91,7 @@ public:
     /// get_safe_alt - returns maximum safe altitude (i.e. alt_max - margin)
     float get_safe_alt_max() const { return _alt_max - _margin; }
 
-    /// get_safe_alt_min - returns the minimum safe altitude (i.e. alt_min - margin)
+    /// get_safe_alt_min - returns the minimum safe altitude (i.e. alt_min + margin)
     float get_safe_alt_min() const { return _alt_min + _margin; }
 
     /// get_radius - returns the fence radius in meters
@@ -177,4 +180,6 @@ private:
     bool            _boundary_create_attempted = false; // true if we have attempted to create the boundary array
     bool            _boundary_loaded = false;       // true if boundary array has been loaded from eeprom
     bool            _boundary_valid = false;        // true if boundary forms a closed polygon
+    bool            _low_alt_fence_enabled;
+
 };

@@ -3,6 +3,7 @@
 #include <GCS_MAVLink/GCS_MAVLink.h>
 #include <GCS_MAVLink/GCS.h>
 
+
 extern const AP_HAL::HAL& hal;
 
 const AP_Param::GroupInfo AC_Fence::var_info[] = {
@@ -92,10 +93,13 @@ AC_Fence::AC_Fence(const AP_AHRS& ahrs, const AP_InertialNav& inav) :
     if (_alt_max < 0.0f) {
         _alt_max.set_and_save(AC_FENCE_ALT_MAX_DEFAULT);
     }
-    AP_Float minumum_valid_alt_max = _alt_min + (2.0f * _margin); // there must be a margin above _alt_min and a margin bellow _alt_max. Hence 2*_margin
+    if (_margin < 0.0f) {
+        _margin.set_and_save(AC_FENCE_MARGIN_DEFAULT);
+    }
+    float minumum_valid_alt_max = _alt_min + (2.0f * _margin); // there must be a margin above _alt_min and a margin bellow _alt_max. Hence 2*_margin
     if (minumum_valid_alt_max > _alt_max) {
         _alt_max.set_and_save(minumum_valid_alt_max);
-        GCS_MAVLINK::send_text(MAV_SEVERITY_ERROR, "Check FENCE settings. ALT_MIN too high, moved ALT_MAX above it!");
+        gcs().send_text(MAV_SEVERITY_ERROR, "Check FENCE settings. ALT_MIN too high, moved ALT_MAX above it!");
     }
     if (_circle_radius < 0) {
         _circle_radius.set_and_save(AC_FENCE_CIRCLE_RADIUS_DEFAULT);
@@ -120,6 +124,11 @@ uint8_t AC_Fence::get_enabled_fences() const
     }
 }
 
+void AC_Fence::enable_low_alt(bool value)
+{
+    _low_alt_fence_enabled = value;
+}
+
 /// pre_arm_check - returns true if all pre-takeoff checks have completed successfully
 bool AC_Fence::pre_arm_check(const char* &fail_msg) const
 {
@@ -131,7 +140,7 @@ bool AC_Fence::pre_arm_check(const char* &fail_msg) const
     }
 
     // check no limits are currently breached
-    if (_breached_fences != AC_FENCE_TYPE_NONE) {
+    if (_breached_fences != AC_FENCE_TYPE_NONE && _breached_fences != AC_FENCE_TYPE_ALT_MIN) {
         fail_msg =  "vehicle outside fence";
         return false;
     }
@@ -202,8 +211,8 @@ uint8_t AC_Fence::check_fence(float curr_alt)
         }
     }
 
-    // floor altitude fence check
-    if ((_enabled_fences & AC_FENCE_TYPE_ALT_MIN) != 0) {
+    // floor altitude fence check + check Flight_mode
+    if (((_enabled_fences & AC_FENCE_TYPE_ALT_MIN) != 0) && _low_alt_fence_enabled) {
 
             // check if we are under the floor altitude fence
             if ( curr_alt <= _alt_min ) {
