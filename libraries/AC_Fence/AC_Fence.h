@@ -15,6 +15,7 @@
 #define AC_FENCE_TYPE_ALT_MAX                       1       // high alt fence which usually initiates an RTL
 #define AC_FENCE_TYPE_CIRCLE                        2       // circular horizontal fence (usually initiates an RTL)
 #define AC_FENCE_TYPE_POLYGON                       4       // polygon horizontal fence
+#define AC_FENCE_TYPE_ALT_MIN                       8       // min alt fence
 
 // valid actions should a fence be breached
 #define AC_FENCE_ACTION_REPORT_ONLY                 0       // report to GCS that boundary has been breached but take no further action
@@ -25,6 +26,7 @@
 #define AC_FENCE_ALT_MIN_DEFAULT                    -10.0f  // default maximum depth in meters
 #define AC_FENCE_CIRCLE_RADIUS_DEFAULT              300.0f  // default circular fence radius is 300m
 #define AC_FENCE_ALT_MAX_BACKUP_DISTANCE            20.0f   // after fence is broken we recreate the fence 20m further up
+#define AC_FENCE_ALT_MIN_BACKUP_DISTANCE            1.0f    // after fence is broken we recreate the fence 1m further down
 #define AC_FENCE_CIRCLE_RADIUS_BACKUP_DISTANCE      20.0f   // after fence is broken we recreate the fence 20m further out
 #define AC_FENCE_MARGIN_DEFAULT                     2.0f    // default distance in meters that autopilot's should maintain from the fence to avoid a breach
 
@@ -150,10 +152,12 @@ private:
 
     // backup fences
     float           _alt_max_backup;        // backup altitude upper limit in meters used to refire the breach if the vehicle continues to move further away
+    float           _alt_min_backup;        // backup altitude lower limit in meters used to refire the breach if the vehicle continues to move further away
     float           _circle_radius_backup;  // backup circle fence radius in meters used to refire the breach if the vehicle continues to move further away
 
     // breach distances
     float           _alt_max_breach_distance;   // distance above the altitude max
+    float           _alt_min_breach_distance;   // distance below the altitude min
     float           _circle_breach_distance;    // distance beyond the circular fence
 
     // other internal variables
