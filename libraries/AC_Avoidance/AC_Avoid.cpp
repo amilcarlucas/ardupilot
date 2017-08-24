@@ -1,6 +1,6 @@
 #include "AC_Avoid.h"
 
-#define AC_AVOID_DEBUG 1
+#define AC_AVOID_DEBUG 0
 
 #if AC_AVOID_DEBUG
   #include <GCS_MAVLINK/GCS.h>
@@ -98,12 +98,6 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         return;
     }
 
-    {
-        float proximity_alt_diff_m;
-        _proximity.get_downward_distance(proximity_alt_diff_m);
-        Debug(1, "RAW_PRX %f", proximity_alt_diff_m);
-    }
-    Debug(1, "Entered: climb_rate_cms %f accel_cmss %f", climb_rate_cms, accel_cmss);
     // limit acceleration
     float accel_cmss_limited = MIN(accel_cmss, AC_AVOID_ACCEL_CMSS_MAX);
 
@@ -117,15 +111,14 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         if (_proximity.get_downward_distance(veh_alt))
         {
             veh_alt = veh_alt *100.0f;
-        }else{
+        } else {
             veh_alt = get_alt_above_home();
         }
-
 
         // calculate distance below fence
         if ((_fence.get_enabled_fences() & AC_FENCE_TYPE_ALT_MAX) > 0) {
           // calculate distance from vehicle to safe ceiling altitude
-          alt_diff_cm = _fence.get_safe_alt_max() * 100.0f - veh_alt;
+          alt_diff_cm = _fence.get_safe_alt_max() * 100.0f - get_alt_above_home();   //use baro for high alt fence
           limit_alt = true;
         }
 
@@ -152,6 +145,8 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
     // case upward rangefinder
     if (_proximity.get_upward_distance(proximity_alt_diff_m)) {
         float proximity_alt_diff_cm = (proximity_alt_diff_m - _margin) * 100.0f;
+    } else {
+        float proximity_alt_diff_cm = (get_alt_above_home()/100.0f - _margin) * 100.0f; //use baro alt if no prx sensor available
         if (!limit_alt || proximity_alt_diff_cm < alt_diff_cm) {
             alt_diff_cm = proximity_alt_diff_cm;
         }
@@ -190,7 +185,6 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         // limit descend rate
         const float max_speed = get_max_speed(kP, accel_cmss_limited, alt_min_diff_cm);
         climb_rate_cms = MAX(-max_speed, climb_rate_cms);
-        Debug(1, "ADJUSTED: climb_rate_cms %f  max_speed %f", climb_rate_cms, max_speed);
     }
 }
 
