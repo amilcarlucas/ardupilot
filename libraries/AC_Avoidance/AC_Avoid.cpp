@@ -98,7 +98,14 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
     float alt_min_diff_cm = 0.0f;
 
     if ((_enabled & AC_AVOID_STOP_AT_FENCE) > 0) {
-        float veh_alt = get_alt_above_home();
+        float veh_alt;
+        if (_proximity.get_downward_distance(veh_alt))
+        {
+            veh_alt = veh_alt *100.0f;
+        }else{
+            veh_alt = get_alt_above_home();
+        }
+
 
         // calculate distance below fence
         if ((_fence.get_enabled_fences() & AC_FENCE_TYPE_ALT_MAX) > 0) {
