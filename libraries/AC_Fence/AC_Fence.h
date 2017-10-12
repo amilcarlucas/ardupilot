@@ -126,6 +126,7 @@ public:
     void handle_msg(GCS_MAVLINK &link, mavlink_message_t* msg);
 
     static const struct AP_Param::GroupInfo var_info[];
+    bool            _low_alt_fence_enabled;
 
 private:
     AC_Fence(const AP_AHRS &ahrs, const AP_InertialNav &inav);
@@ -180,6 +181,6 @@ private:
     bool            _boundary_create_attempted = false; // true if we have attempted to create the boundary array
     bool            _boundary_loaded = false;       // true if boundary array has been loaded from eeprom
     bool            _boundary_valid = false;        // true if boundary forms a closed polygon
-    bool            _low_alt_fence_enabled;
+
 
 };

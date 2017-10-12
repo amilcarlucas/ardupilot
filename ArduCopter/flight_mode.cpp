@@ -282,10 +282,10 @@ void Copter::update_flight_mode()
             break;
     }
 #if AC_FENCE == ENABLED
-    if (   (control_mode != LAND)
-        && (control_mode != RTL)
-        && (100.0f *baro_alt > fence.get_safe_alt_min())) {
-       fence.enable_low_alt(true); // Potentially enable low altitude fence the first time the vehicle is above it
+    if (!fence._low_alt_fence_enabled && (control_mode != LAND) && (control_mode != RTL)) {
+        if ((current_loc.alt/100.0f) > fence.get_safe_alt_min() && (rangefinder.has_orientation(ROTATION_PITCH_270) ? (rangefinder.distance_cm_orient(ROTATION_PITCH_270)/100.0f > fence.get_safe_alt_min()) : true)) {
+            fence.enable_low_alt(true); // Potentially enable low altitude fence the first time the vehicle is above it
+        }
     }
 #endif
 }
