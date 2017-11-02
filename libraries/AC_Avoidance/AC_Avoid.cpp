@@ -1,5 +1,14 @@
 #include "AC_Avoid.h"
 
+#define AC_AVOID_DEBUG 0
+
+#if AC_AVOID_DEBUG
+  #include <GCS_MAVLINK/GCS.h>
+  #define Debug(level, fmt, args ...)  do { if (level <= AC_AVOID_DEBUG) { GCS_MAVLINK::send_text(MAV_SEVERITY_INFO, fmt, ## args); } } while (0)
+#else
+  #define Debug(level, fmt, args ...)
+#endif
+
 const AP_Param::GroupInfo AC_Avoid::var_info[] = {
 
     // @Param: ENABLE
@@ -89,23 +98,36 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         return;
     }
 
-    // do not adjust climb_rate if level or descending
-    if (climb_rate_cms <= 0.0f) {
-        return;
-    }
-
     // limit acceleration
     float accel_cmss_limited = MIN(accel_cmss, AC_AVOID_ACCEL_CMSS_MAX);
 
     bool limit_alt = false;
+    bool limit_min_alt = false;
     float alt_diff_cm = 0.0f;   // distance from altitude limit to vehicle in cm (positive means vehicle is below limit)
+    float alt_min_diff_cm = 0.0f;
 
-    // calculate distance below fence
-    if ((_enabled & AC_AVOID_STOP_AT_FENCE) > 0 && (_fence.get_enabled_fences() & AC_FENCE_TYPE_ALT_MAX) > 0) {
-        // calculate distance from vehicle to safe altitude
-        float veh_alt = get_alt_above_home();
-        alt_diff_cm = _fence.get_safe_alt_max() * 100.0f - veh_alt;
-        limit_alt = true;
+    if ((_enabled & AC_AVOID_STOP_AT_FENCE) > 0) {
+        float veh_alt;
+        if (_proximity.get_downward_distance(veh_alt))
+        {
+            veh_alt = veh_alt *100.0f;
+        } else {
+            veh_alt = get_alt_above_home();
+        }
+
+        // calculate distance below fence
+        if ((_fence.get_enabled_fences() & AC_FENCE_TYPE_ALT_MAX) > 0) {
+          // calculate distance from vehicle to safe ceiling altitude
+          alt_diff_cm = _fence.get_safe_alt_max() * 100.0f - get_alt_above_home();   //use baro for high alt fence
+          limit_alt = true;
+        }
+
+        // calculate distance above fence
+        if ((_fence.get_enabled_fences() & AC_FENCE_TYPE_ALT_MIN) > 0) {
+           // calculate distance from vehicle to safe floor altitude
+           alt_min_diff_cm = veh_alt - _fence.get_safe_alt_min() * 100.0f;
+           limit_min_alt = true;
+        }
     }
 
     // calculate distance to optical flow altitude limit
@@ -120,17 +142,28 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
 
     // get distance from proximity sensor (in meters, convert to cm)
     float proximity_alt_diff_m;
+    // case upward rangefinder
     if (_proximity.get_upward_distance(proximity_alt_diff_m)) {
         float proximity_alt_diff_cm = (proximity_alt_diff_m - _margin) * 100.0f;
+    } else {
+        float proximity_alt_diff_cm = (get_alt_above_home()/100.0f - _margin) * 100.0f; //use baro alt if no prx sensor available
         if (!limit_alt || proximity_alt_diff_cm < alt_diff_cm) {
             alt_diff_cm = proximity_alt_diff_cm;
         }
         limit_alt = true;
     }
+    // case downward rangefinder
+    if (_proximity.get_downward_distance(proximity_alt_diff_m)) {
+        float proximity_alt_diff_cm = (proximity_alt_diff_m - _margin) * 100.0f;
+        if (!limit_alt || proximity_alt_diff_cm < alt_min_diff_cm) {
+            alt_min_diff_cm = proximity_alt_diff_cm;
+        }
+        limit_min_alt = true;
+        }
 
     // limit climb rate
-    if (limit_alt) {
-        // do not allow climbing if we've breached the safe altitude
+    if (limit_alt && climb_rate_cms > 0.0f) {
+        // do not allow climbing if we've breached the safe ceiling altitude
         if (alt_diff_cm <= 0.0f) {
             climb_rate_cms = MIN(climb_rate_cms, 0.0f);
             return;
@@ -139,6 +172,19 @@ void AC_Avoid::adjust_velocity_z(float kP, float accel_cmss, float& climb_rate_c
         // limit climb rate
         const float max_speed = get_max_speed(kP, accel_cmss_limited, alt_diff_cm);
         climb_rate_cms = MIN(max_speed, climb_rate_cms);
+    }
+
+    // limit descend rate
+    if (limit_min_alt && climb_rate_cms < 0.0f) {
+        // do not allow descending if we've breached the safe floor altitude
+        if (alt_min_diff_cm <= 0.0f) {
+            climb_rate_cms = MAX(climb_rate_cms, 0.0f);
+            return;
+        }
+
+        // limit descend rate
+        const float max_speed = get_max_speed(kP, accel_cmss_limited, alt_min_diff_cm);
+        climb_rate_cms = MAX(-max_speed, climb_rate_cms);
     }
 }
 

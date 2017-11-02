@@ -125,6 +125,102 @@ def loiter(mavproxy, mav, holdtime=10, maxaltchange=5, maxdistchange=5):
         print("Loiter FAILED")
     return success
 
+def fly_LAF(mavproxy, mav):
+    print("Test LOITER")
+    mavproxy.send('param set FENCE_ENABLE 1\n')
+    mavproxy.send('param set AVOID_ENABLE 3\n')
+    mavproxy.send('param set AVOID_MARGIN 1\n')
+    mavproxy.send('param set FENCE_ALT_MIN 10\n')
+    mavproxy.send('param set FENCE_TYPE 15\n')
+    mavproxy.send('param set FENCE_ACTION 1\n')
+    mavproxy.send('param set FENCE_MARGIN 1\n')
+    #enable RGNF
+    mavproxy.send('param set RNGFND_TYPE 1\n')
+    mavproxy.send('param set RNGFND_SCALING 10\n')
+    mavproxy.send('param set RNGFND_PIN 0\n')
+    mavproxy.send('param set RNGFND_MAX_CM 5000\n')
+    mavproxy.send('param set RNGFND_OFFSET 0\n')
+    mavproxy.send('switch 5\n')  # loiter mode
+    wait_mode(mav, 'LOITER')
+
+    # first aim south east
+    print("Turn south east!")
+    mavproxy.send('rc 4 1680\n')
+    if not wait_heading(mav, 170):
+        print("LAF Error: Heading not reached")
+        return False
+    mavproxy.send('rc 4 1500\n')
+
+    #climb to 30m
+    print("Climb to 30m!")
+    if not change_alt(mavproxy, mav, 30):
+        print("LAF Error: Altitude not reached")
+        return False
+
+    # fly south east 10m
+    print("Fly south east 10m!")
+    mavproxy.send('rc 2 1100\n')
+    if not wait_distance(mav, 10):
+        print("LAF Error: Altitude not reached")
+        return False
+    mavproxy.send('rc 2 1500\n')
+
+    # wait for copter to slow moving
+    if not wait_groundspeed(mav, 0, 2):
+        print("LAF Error: Groundspeed not reached")
+        return False
+
+    success = False
+    #descend to 1m
+    print("descend to 1m")
+    if change_alt(mavproxy, mav, 1):
+        success = True
+
+    print("LOITER PASS")
+    pose = mav.location()
+    print("Test GUIDED")
+    # GUIDED mode
+    mavproxy.send('mode guided\n')
+    wait_mode(mav, 'GUIDED')
+    mavproxy.send('guided -35.362938 149.165085 20\n')
+    home_distance = get_distance(HOME, pose)
+    if not wait_distance(mav, home_distance):
+        print("LAF Error: Failed to reach distance of %u" % home_distance)
+        success = False
+    print("Went back home")
+    print("Descend to 1m")
+    mavproxy.send('guided -35.362938 149.165085 584\n')
+    if wait_altitude(mav, -5, 5, 1):
+        print("LAF Error: Fence breached!")
+        success = False
+    print("Fence not breached!")
+    print("GUIDED PASS!")
+    # switch to stabilize mode
+    mavproxy.send('rc 3 1500\n')
+    mavproxy.send('switch 6\n')
+    wait_mode(mav, 'STABILIZE')
+    #descend
+    print("Descent in Stabilize!")
+    mavproxy.send('rc 3 1480\n')
+    if not wait_mode(mav, 'RTL'):
+         print("Fence Breach not detected")
+         return False
+    print("Fence Breach in Stabilize: Go RTL!")
+    if success:
+        print("fly_LAF OK")
+        mavproxy.send('param set FENCE_ENABLE 0\n')
+        mavproxy.send('param set AVOID_ENABLE 0\n')
+        mavproxy.send('param set AVOID_MARGIN 0\n')
+        mavproxy.send('param set FENCE_ALT_MIN -10\n')
+        mavproxy.send('param set FENCE_TYPE 0\n')
+        mavproxy.send('param set FENCE_ACTION 0\n')
+        mavproxy.send('param set FENCE_MARGIN 0\n')
+        #disable RGNF
+        mavproxy.send('param set RNGFND_TYPE 0\n')
+    else:
+        print("fly_LAF FAILED")
+    return success
+
 
 def change_alt(mavproxy, mav, alt_min, climb_throttle=1920, descend_throttle=1080):
     """Change altitude."""
@@ -1284,6 +1380,20 @@ def fly_ArduCopter(binary, viewerip=None, use_map=False, valgrind=False, gdb=Fal
         print("#")
         if not fly_RTL(mavproxy, mav):
             failed_test_msg = "fly_RTL after circle failed"
+            print(failed_test_msg)
+            failed = True
+
+        # Takeoff
+        print("# Takeoff")
+        if not takeoff(mavproxy, mav, 10):
+            failed_test_msg = "takeoff failed"
+            print(failed_test_msg)
+            failed = True
+
+        # fly LAF
+        print("# fly LAF Test")
+        if not fly_LAF(mavproxy, mav):
+            failed_test_msg = "fly_LAF failed"
             print(failed_test_msg)
             failed = True
 

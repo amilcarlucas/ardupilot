@@ -15,18 +15,22 @@ void Copter::fence_check()
     fence.set_home_distance(home_distance*0.01f);
 
     // check for a breach
-    new_breaches = fence.check_fence(current_loc.alt/100.0f);
-
+    // use baro if out of range
+    if ((current_loc.alt/100.0f) > (rangefinder.max_distance_cm_orient(ROTATION_PITCH_270)/100.0f)) {
+        new_breaches = fence.check_fence(current_loc.alt/100.0f);
+    } else {
+        new_breaches = fence.check_fence(rangefinder.distance_cm_orient(ROTATION_PITCH_270)/100.0f);
+    }
     // return immediately if motors are not armed
-    if(!motors->armed()) {
+    if (!motors->armed()) {
         return;
     }
 
     // if there is a new breach take action
-    if( new_breaches != AC_FENCE_TYPE_NONE ) {
+    if ( new_breaches != AC_FENCE_TYPE_NONE ) {
 
         // if the user wants some kind of response and motors are armed
-        if(fence.get_action() != AC_FENCE_ACTION_REPORT_ONLY ) {
+        if (fence.get_action() != AC_FENCE_ACTION_REPORT_ONLY ) {
 
             // disarm immediately if we think we are on the ground or in a manual flight mode with zero throttle
             // don't disarm if the high-altitude fence has been broken because it's likely the user has pulled their throttle to zero to bring it down

@@ -3,6 +3,7 @@
 #include <GCS_MAVLink/GCS_MAVLink.h>
 #include <GCS_MAVLink/GCS.h>
 
+
 extern const AP_HAL::HAL& hal;
 
 const AP_Param::GroupInfo AC_Fence::var_info[] = {
@@ -16,8 +17,7 @@ const AP_Param::GroupInfo AC_Fence::var_info[] = {
     // @Param: TYPE
     // @DisplayName: Fence Type
     // @Description: Enabled fence types held as bitmask
-    // @Values: 0:None,1:Altitude,2:Circle,3:Altitude and Circle,4:Polygon,5:Altitude and Polygon,6:Circle and Polygon,7:All
-    // @Bitmask: 0:Altitude,1:Circle,2:Polygon
+    // @Bitmask: 0:Altitude ceiling,1:Circle,2:Polygon,3:Altitude floor
     // @User: Standard
     AP_GROUPINFO("TYPE",        1,  AC_Fence,   _enabled_fences,  AC_FENCE_TYPE_ALT_MAX | AC_FENCE_TYPE_CIRCLE | AC_FENCE_TYPE_POLYGON),
 
@@ -35,7 +35,7 @@ const AP_Param::GroupInfo AC_Fence::var_info[] = {
     // @Range: 10 1000
     // @Increment: 1
     // @User: Standard
-    AP_GROUPINFO("ALT_MAX",     3,  AC_Fence,   _alt_max,       AC_FENCE_ALT_MAX_DEFAULT),
+    AP_GROUPINFO_FRAME("ALT_MAX",     3,  AC_Fence,   _alt_max,       AC_FENCE_ALT_MAX_DEFAULT, AP_PARAM_FRAME_COPTER | AP_PARAM_FRAME_PLANE | AP_PARAM_FRAME_SUB | AP_PARAM_FRAME_TRICOPTER | AP_PARAM_FRAME_HELI),
 
     // @Param: RADIUS
     // @DisplayName: Circular Fence Radius
@@ -67,7 +67,7 @@ const AP_Param::GroupInfo AC_Fence::var_info[] = {
     // @Range: -100 100
     // @Increment: 1
     // @User: Standard
-    AP_GROUPINFO_FRAME("ALT_MIN",     7,  AC_Fence,   _alt_min,       AC_FENCE_ALT_MIN_DEFAULT, AP_PARAM_FRAME_SUB),
+    AP_GROUPINFO_FRAME("ALT_MIN",     7,  AC_Fence,   _alt_min,       AC_FENCE_ALT_MIN_DEFAULT, AP_PARAM_FRAME_COPTER | AP_PARAM_FRAME_PLANE | AP_PARAM_FRAME_SUB | AP_PARAM_FRAME_TRICOPTER | AP_PARAM_FRAME_HELI),
 
     AP_GROUPEND
 };
@@ -79,6 +79,7 @@ AC_Fence::AC_Fence(const AP_AHRS& ahrs, const AP_InertialNav& inav) :
     _alt_max_backup(0),
     _circle_radius_backup(0),
     _alt_max_breach_distance(0),
+    _alt_min_breach_distance(0),
     _circle_breach_distance(0),
     _home_distance(0),
     _breached_fences(AC_FENCE_TYPE_NONE),
@@ -91,6 +92,14 @@ AC_Fence::AC_Fence(const AP_AHRS& ahrs, const AP_InertialNav& inav) :
     // check for silly fence values
     if (_alt_max < 0.0f) {
         _alt_max.set_and_save(AC_FENCE_ALT_MAX_DEFAULT);
+    }
+    if (_margin < 0.0f) {
+        _margin.set_and_save(AC_FENCE_MARGIN_DEFAULT);
+    }
+    float minumum_valid_alt_max = _alt_min + (2.0f * _margin); // there must be a margin above _alt_min and a margin bellow _alt_max. Hence 2*_margin
+    if (minumum_valid_alt_max > _alt_max) {
+        _alt_max.set_and_save(minumum_valid_alt_max);
+        gcs().send_text(MAV_SEVERITY_ERROR, "Check FENCE settings. ALT_MIN too high, moved ALT_MAX above it!");
     }
     if (_circle_radius < 0) {
         _circle_radius.set_and_save(AC_FENCE_CIRCLE_RADIUS_DEFAULT);
@@ -115,6 +124,11 @@ uint8_t AC_Fence::get_enabled_fences() const
     }
 }
 
+void AC_Fence::enable_low_alt(bool value)
+{
+    _low_alt_fence_enabled = value;
+}
+
 /// pre_arm_check - returns true if all pre-takeoff checks have completed successfully
 bool AC_Fence::pre_arm_check(const char* &fail_msg) const
 {
@@ -126,8 +140,13 @@ bool AC_Fence::pre_arm_check(const char* &fail_msg) const
     }
 
     // check no limits are currently breached
-    if (_breached_fences != AC_FENCE_TYPE_NONE) {
+    if (_breached_fences != AC_FENCE_TYPE_NONE && _breached_fences != AC_FENCE_TYPE_ALT_MIN) {
         fail_msg =  "vehicle outside fence";
+        return false;
+    }
+
+    if (_alt_max - _alt_min < 2.0f * _margin) {
+        fail_msg =  "Check FENCE settings. ALT_MIN too high!";
         return false;
     }
 
@@ -163,10 +182,10 @@ uint8_t AC_Fence::check_fence(float curr_alt)
         }
     }
 
-    // altitude fence check
+    // ceiling altitude fence check
     if ((_enabled_fences & AC_FENCE_TYPE_ALT_MAX) != 0) {
 
-        // check if we are over the altitude fence
+        // check if we are over the ceiling altitude fence
         if( curr_alt >= _alt_max ) {
 
             // record distance above breach
@@ -191,6 +210,35 @@ uint8_t AC_Fence::check_fence(float curr_alt)
             }
         }
     }
+
+    // floor altitude fence check + check Flight_mode
+    if (((_enabled_fences & AC_FENCE_TYPE_ALT_MIN) != 0) && _low_alt_fence_enabled) {
+
+            // check if we are under the floor altitude fence
+            if ( curr_alt <= _alt_min ) {
+
+                // record distance above breach
+                _alt_min_breach_distance = _alt_min - curr_alt;
+
+                // check for a new breach or a breach of the backup fence
+                if ((_breached_fences & AC_FENCE_TYPE_ALT_MIN) == 0 || (!is_zero(_alt_min_backup) && curr_alt <= _alt_min_backup)) {
+
+                    // record that we have breached the lower limit
+                    record_breach(AC_FENCE_TYPE_ALT_MIN);
+                    ret |= AC_FENCE_TYPE_ALT_MIN;
+
+                    // create a backup fence 1m lower down
+                    _alt_min_backup = curr_alt - AC_FENCE_ALT_MIN_BACKUP_DISTANCE;
+                }
+            } else {
+                // clear alt breach if present
+                if ((_breached_fences & AC_FENCE_TYPE_ALT_MIN) != 0) {
+                    clear_breach(AC_FENCE_TYPE_ALT_MIN);
+                    _alt_min_backup = 0.0f;
+                    _alt_min_breach_distance = 0.0f;
+                }
+            }
+        }
 
     // circle fence check
     if ((_enabled_fences & AC_FENCE_TYPE_CIRCLE) != 0 ) {
@@ -325,11 +373,22 @@ float AC_Fence::get_breach_distance(uint8_t fence_type) const
         case AC_FENCE_TYPE_ALT_MAX:
             return _alt_max_breach_distance;
             break;
+        case AC_FENCE_TYPE_ALT_MIN:
+            return _alt_min_breach_distance;
+            break;
+        case AC_FENCE_TYPE_ALT_MAX | AC_FENCE_TYPE_ALT_MIN:
+            return MAX(_alt_max_breach_distance,_alt_min_breach_distance);
+            break;
         case AC_FENCE_TYPE_CIRCLE:
             return _circle_breach_distance;
             break;
         case AC_FENCE_TYPE_ALT_MAX | AC_FENCE_TYPE_CIRCLE:
             return MAX(_alt_max_breach_distance,_circle_breach_distance);
+        case AC_FENCE_TYPE_ALT_MIN | AC_FENCE_TYPE_CIRCLE:
+            return MAX(_alt_min_breach_distance,_circle_breach_distance);
+        case AC_FENCE_TYPE_ALT_MAX | AC_FENCE_TYPE_ALT_MIN | AC_FENCE_TYPE_CIRCLE:
+            return MAX( MAX(_alt_max_breach_distance, _alt_min_breach_distance), _circle_breach_distance);
+            break;
     }
 
     // we don't recognise the fence type so just return 0
