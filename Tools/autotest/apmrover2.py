@@ -487,7 +487,7 @@ class AutoTestRover(AutoTest):
         self.progress("Started simulator")
 
         failed = False
-        e = 'None'
+        fail_list = []
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s" %
                           self.mav.WIRE_PROTOCOL_VERSION)
@@ -510,10 +510,12 @@ class AutoTestRover(AutoTest):
             self.progress("#")
             self.progress("########## Drive an RTL mission  ##########")
             self.progress("#")
+
             # Drive a square in learning mode
             # self.reset_and_arm()
             if not self.drive_rtl_mission():
                 self.progress("Failed RTL mission")
+                fail_list.append("drive_rtl_mission")
                 failed = True
 
             self.progress("#")
@@ -524,18 +526,22 @@ class AutoTestRover(AutoTest):
             # self.reset_and_arm()
             if not self.drive_square():
                 self.progress("Failed drive square")
+                fail_list.append("drive_square")
                 failed = True
 
             if not self.drive_mission(os.path.join(testdir, "rover1.txt")):
                 self.progress("Failed mission")
+                fail_list.append("drive_mission")
                 failed = True
 
             if not self.drive_brake():
                 self.progress("Failed brake")
+                fail_list.append("drive_brake")
                 failed = True
 
             if not self.disarm_vehicle():
                 self.progress("Failed to DISARM")
+                fail_list.append("disarm_vehicle")
                 failed = True
 
             # do not move this to be the first test.  MAVProxy's dedupe
@@ -543,21 +549,25 @@ class AutoTestRover(AutoTest):
             self.progress("Getting banner")
             if not self.do_get_banner():
                 self.progress("FAILED: get banner")
+                fail_list.append("do_get_banner")
                 failed = True
 
             self.progress("Getting autopilot capabilities")
             if not self.do_get_autopilot_capabilities():
                 self.progress("FAILED: get capabilities")
+                fail_list.append("do_get_autopilot_capabilities")
                 failed = True
 
             self.progress("Setting mode via MAV_COMMAND_DO_SET_MODE")
             if not self.do_set_mode_via_command_long():
+                fail_list.append("do_set_mode_via_command_long")
                 failed = True
 
             # test ServoRelayEvents:
             self.progress("########## Test ServoRelayEvents ##########")
             if not self.test_servorelayevents():
                 self.progress("Failed servo relay events")
+                fail_list.append("test_servorelayevents")
                 failed = True
 
             # Throttle Failsafe
@@ -571,6 +581,7 @@ class AutoTestRover(AutoTest):
 
             if not self.log_download(self.buildlogs_path("APMrover2-log.bin")):
                 self.progress("Failed log download")
+                fail_list.append("log_download")
                 failed = True
     #        if not drive_left_circuit(self):
     #            self.progress("Failed left circuit")
@@ -586,6 +597,6 @@ class AutoTestRover(AutoTest):
         self.close()
 
         if failed:
-            self.progress("FAILED: %s" % e)
+            self.progress("FAILED STEPS: %s" % fail_list)
             return False
         return True

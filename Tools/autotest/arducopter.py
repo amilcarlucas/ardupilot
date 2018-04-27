@@ -1110,7 +1110,7 @@ class AutoTestCopter(AutoTest):
             self.init()
 
         failed = False
-        failed_test_msg = "None"
+        fail_list = []
 
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s"
@@ -1130,14 +1130,13 @@ class AutoTestCopter(AutoTest):
             # Arm
             self.progress("# Arm motors")
             if not self.arm_vehicle():
-                failed_test_msg = "arm_motors failed"
-                self.progress(failed_test_msg)
+                fail_list.append("arm_motors")
                 failed = True
 
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                self.progress("takeoff failed")
+                fail_list.append("takeoff")
                 failed = True
 
             # Fly a square in Stabilize mode
@@ -1146,8 +1145,8 @@ class AutoTestCopter(AutoTest):
                           " switch ##########")
             self.progress("#")
             if not self.fly_square():
-                failed_test_msg = "fly_square failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_square")
+                self.progress("fly_square failed")
                 failed = True
 
             # save the stored mission to file
@@ -1156,15 +1155,14 @@ class AutoTestCopter(AutoTest):
             num_wp = self.save_mission_to_file(os.path.join(testdir,
                                                             "ch7_mission.txt"))
             if not num_wp:
-                failed_test_msg = "save_mission_to_file failed"
-                self.progress(failed_test_msg)
+                fail_list.append("save_mission_to_file")
+                self.progress("save_mission_to_file failed")
                 failed = True
 
             # fly the stored mission
             self.progress("# Fly CH7 saved mission")
             if not self.fly_mission(height_accuracy=0.5, target_altitude=10):
-                failed_test_msg = "fly ch7_mission failed"
-                self.progress(failed_test_msg)
+                self.progress("fly ch7_mission failed")
                 failed = True
 
             # Throttle Failsafe
@@ -1172,28 +1170,28 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test Failsafe ##########")
             self.progress("#")
             if not self.fly_throttle_failsafe():
-                failed_test_msg = "fly_throttle_failsafe failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_throttle_failsafe")
+                self.progress("fly_throttle_failsafe failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Battery failsafe
             if not self.fly_battery_failsafe():
-                failed_test_msg = "fly_battery_failsafe failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_battery_failsafe")
+                self.progress("fly_battery_failsafe failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Stability patch
@@ -1201,22 +1199,22 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test Stability Patch ##########")
             self.progress("#")
             if not self.fly_stability_patch(30):
-                failed_test_msg = "fly_stability_patch failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_stability_patch")
+                self.progress("fly_stability_patch failed")
                 failed = True
 
             # RTL
             self.progress("# RTL #")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL after stab patch failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL after stab patch")
+                self.progress("fly_RTL after stab patch failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Fence test
@@ -1224,8 +1222,8 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test Horizontal Fence ##########")
             self.progress("#")
             if not self.fly_fence_test(180):
-                failed_test_msg = "fly_fence_test failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_fence_test")
+                self.progress("fly_fence_test failed")
                 failed = True
 
             # Fence test
@@ -1233,43 +1231,43 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test Max Alt Fence ##########")
             self.progress("#")
             if not self.fly_alt_max_fence_test(180):
-                failed_test_msg = "fly_alt_max_fence_test failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_alt_max_fence_test")
+                self.progress("fly_alt_max_fence_test failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Fly GPS Glitch Loiter test
             self.progress("# GPS Glitch Loiter Test")
             if not self.fly_gps_glitch_loiter_test():
-                failed_test_msg = "fly_gps_glitch_loiter_test failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_gps_glitch_loiter_test")
+                self.progress("fly_gps_glitch_loiter_test failed")
                 failed = True
 
             # RTL after GPS Glitch Loiter test
             self.progress("# RTL #")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL")
+                self.progress("fly_RTL failed")
                 failed = True
 
             # Fly GPS Glitch test in auto mode
             self.progress("# GPS Glitch Auto Test")
             if not self.fly_gps_glitch_auto_test():
-                failed_test_msg = "fly_gps_glitch_auto_test failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_gps_glitch_auto_test")
+                self.progress("fly_gps_glitch_auto_test failed")
                 failed = True
 
             # take-off ahead of next test
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Loiter for 10 seconds
@@ -1277,8 +1275,8 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test Loiter for 10 seconds ##########")
             self.progress("#")
             if not self.loiter():
-                failed_test_msg = "loiter failed"
-                self.progress(failed_test_msg)
+                fail_list.append("loiter")
+                self.progress("loiter failed")
                 failed = True
 
             # Loiter Climb
@@ -1286,8 +1284,8 @@ class AutoTestCopter(AutoTest):
             self.progress("# Loiter - climb to 30m")
             self.progress("#")
             if not self.change_alt(30):
-                failed_test_msg = "change_alt climb failed"
-                self.progress(failed_test_msg)
+                fail_list.append("change_alt climb")
+                self.progress("change_alt climb failed")
                 failed = True
 
             # Loiter Descend
@@ -1295,8 +1293,8 @@ class AutoTestCopter(AutoTest):
             self.progress("# Loiter - descend to 20m")
             self.progress("#")
             if not self.change_alt(20):
-                failed_test_msg = "change_alt descend failed"
-                self.progress(failed_test_msg)
+                fail_list.append("change_alt descend")
+                self.progress("change_alt descend failed")
                 failed = True
 
             # RTL
@@ -1304,22 +1302,22 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test RTL ##########")
             self.progress("#")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL after Loiter climb/descend failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL after Loiter climb/descend")
+                self.progress("fly_RTL after Loiter climb/descend failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Simple mode
             self.progress("# Fly in SIMPLE mode")
             if not self.fly_simple():
-                failed_test_msg = "fly_simple failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_simple")
+                self.progress("fly_simple failed")
                 failed = True
 
             # RTL
@@ -1327,43 +1325,43 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test RTL ##########")
             self.progress("#")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL after simple mode failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL after simple mode")
+                self.progress("fly_RTL after simple mode failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Fly a circle in super simple mode
             self.progress("# Fly a circle in SUPER SIMPLE mode")
             if not self.fly_super_simple():
-                failed_test_msg = "fly_super_simple failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_super_simple")
+                self.progress("fly_super_simple failed")
                 failed = True
 
             # RTL
             self.progress("# RTL #")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL after super simple mode failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL after super simple mode")
+                self.progress("fly_RTL after super simple mode failed")
                 failed = True
 
             # Takeoff
             self.progress("# Takeoff")
             if not self.takeoff(10):
-                failed_test_msg = "takeoff failed"
-                self.progress(failed_test_msg)
+                fail_list.append("takeoff")
+                self.progress("takeoff failed")
                 failed = True
 
             # Circle mode
             self.progress("# Fly CIRCLE mode")
             if not self.fly_circle():
-                failed_test_msg = "fly_circle failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_circle")
+                self.progress("fly_circle failed")
                 failed = True
 
             # RTL
@@ -1371,14 +1369,14 @@ class AutoTestCopter(AutoTest):
             self.progress("########## Test RTL ##########")
             self.progress("#")
             if not self.fly_RTL():
-                failed_test_msg = "fly_RTL after circle failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_RTL after circle")
+                self.progress("fly_RTL after circle failed")
                 failed = True
 
             self.progress("# Fly copter mission")
             if not self.fly_auto_test():
-                failed_test_msg = "fly_auto_test failed"
-                self.progress(failed_test_msg)
+                fail_list.append("fly_auto_test")
+                self.progress("fly_auto_test failed")
                 failed = True
             else:
                 self.progress("Flew copter mission OK")
@@ -1388,18 +1386,20 @@ class AutoTestCopter(AutoTest):
 
             log_filepath = self.buildlogs_path("ArduCopter-log.bin")
             if not self.log_download(log_filepath):
-                failed_test_msg = "log_download failed"
-                self.progress(failed_test_msg)
+                fail_list.append("log_download")
+                self.progress("log_download failed")
                 failed = True
 
         except pexpect.TIMEOUT as e:
             self.progress("Failed with timeout")
+            fail_list.append("Failed with timeout")
+            self.progress("log_download failed")
             failed = True
 
         self.close()
 
         if failed:
-            self.progress("FAILED: %s" % failed_test_msg)
+            self.progress("FAILED : %s" % fail_list)
             return False
         return True
 
@@ -1452,8 +1452,8 @@ class AutoTestCopter(AutoTest):
                 self.progress(failed_test_msg)
                 failed = True
 
-        except pexpect.TIMEOUT as failed_test_msg:
-            failed_test_msg = "Timeout"
+        except [pexpect.TIMEOUT,ErrorException] as failed_test_msg:
+            failed_test_msg = "Failed with "+ type(failed_test_msg).__name__
             failed = True
 
         self.close()

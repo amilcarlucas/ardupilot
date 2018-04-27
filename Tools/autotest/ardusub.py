@@ -164,7 +164,7 @@ class AutoTestSub(AutoTest):
             self.init()
 
         failed = False
-        e = 'None'
+        fail_list = []
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s"
                           % self.mav.WIRE_PROTOCOL_VERSION)
@@ -181,15 +181,19 @@ class AutoTestSub(AutoTest):
             self.set_rc_default()
             if not self.arm_vehicle():
                 self.progress("Failed to ARM")
+                fail_list.append("arm_vehicle")
                 failed = True
             if not self.dive_manual():
                 self.progress("Failed manual dive")
+                fail_list.append("dive_manual")
                 failed = True
             if not self.dive_mission(os.path.join(testdir, "sub_mission.txt")):
                 self.progress("Failed auto mission")
+                fail_list.append("dive_mission")
                 failed = True
             if not self.log_download(self.buildlogs_path("ArduSub-log.bin")):
                 self.progress("Failed log download")
+                fail_list.append("log_download")
                 failed = True
         except pexpect.TIMEOUT as e:
             self.progress("Failed with timeout")
@@ -198,6 +202,6 @@ class AutoTestSub(AutoTest):
         self.close()
 
         if failed:
-            self.progress("FAILED: %s" % e)
+            self.progress("FAILED: %s" % fail_list)
             return False
         return True
