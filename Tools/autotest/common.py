@@ -393,61 +393,61 @@ class AutoTest(ABC):
 
     def reach_heading_manual(self, heading):
         """Manually direct the vehicle to the target heading."""
-        if self.mav.mav_type in [mavutil.mavlink.MAV_TYPE_QUADROTOR,
-                                 mavutil.mavlink.MAV_TYPE_HELICOPTER,
-                                 mavutil.mavlink.MAV_TYPE_HEXAROTOR,
-                                 mavutil.mavlink.MAV_TYPE_OCTOROTOR,
-                                 mavutil.mavlink.MAV_TYPE_COAXIAL,
-                                 mavutil.mavlink.MAV_TYPE_TRICOPTER]:
-            self.mavproxy.send('rc 4 1580\n')
-            if not self.wait_heading(heading):
-                self.progress("Failed to reach heading")
-                return False
-            self.mavproxy.send('rc 4 1500\n')
-            self.mav.recv_match(condition='RC_CHANNELS.chan4_raw==1500',
-                                blocking=True)
-        if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_FIXED_WING:
-            self.progress("NOT IMPLEMENTED")
-        if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_GROUND_ROVER:
-            self.mavproxy.send('rc 1 1700\n')
-            self.mavproxy.send('rc 3 1550\n')
-            if not self.wait_heading(heading):
-                self.progress("Failed to reach heading")
-                return False
-            self.mavproxy.send('rc 3 1500\n')
-            self.mav.recv_match(condition='RC_CHANNELS.chan3_raw==1500',
-                                blocking=True)
-            self.mavproxy.send('rc 1 1500\n')
-            self.mav.recv_match(condition='RC_CHANNELS.chan1_raw==1500',
-                                blocking=True)
-        return True
+        try:
+            if self.mav.mav_type in [mavutil.mavlink.MAV_TYPE_QUADROTOR,
+                                     mavutil.mavlink.MAV_TYPE_HELICOPTER,
+                                     mavutil.mavlink.MAV_TYPE_HEXAROTOR,
+                                     mavutil.mavlink.MAV_TYPE_OCTOROTOR,
+                                     mavutil.mavlink.MAV_TYPE_COAXIAL,
+                                     mavutil.mavlink.MAV_TYPE_TRICOPTER]:
+                self.mavproxy.send('rc 4 1580\n')
+                self.wait_heading(heading)
+                self.mavproxy.send('rc 4 1500\n')
+                self.mav.recv_match(condition='RC_CHANNELS.chan4_raw==1500',
+                                    blocking=True)
+            if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_FIXED_WING:
+                self.progress("NOT IMPLEMENTED")
+            if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_GROUND_ROVER:
+                self.mavproxy.send('rc 1 1700\n')
+                self.mavproxy.send('rc 3 1550\n')
+                self.wait_heading(heading)
+                self.mavproxy.send('rc 3 1500\n')
+                self.mav.recv_match(condition='RC_CHANNELS.chan3_raw==1500',
+                                    blocking=True)
+                self.mavproxy.send('rc 1 1500\n')
+                self.mav.recv_match(condition='RC_CHANNELS.chan1_raw==1500',
+                                    blocking=True)
+            return True
+        except ErrorException as ex:
+            self.progress("reach_heading_manual failed with %s" % type(ex).__name__)
+            raise ErrorException()
 
     def reach_distance_manual(self,  distance):
         """Manually direct the vehicle to the target distance from home."""
-        if self.mav.mav_type in [mavutil.mavlink.MAV_TYPE_QUADROTOR,
-                                 mavutil.mavlink.MAV_TYPE_HELICOPTER,
-                                 mavutil.mavlink.MAV_TYPE_HEXAROTOR,
-                                 mavutil.mavlink.MAV_TYPE_OCTOROTOR,
-                                 mavutil.mavlink.MAV_TYPE_COAXIAL,
-                                 mavutil.mavlink.MAV_TYPE_TRICOPTER]:
-            self.mavproxy.send('rc 2 1350\n')
-            if not self.wait_distance(distance, accuracy=5, timeout=60):
-                self.progress("Failed to reach distance of %u" % distance)
-                return False
-            self.mavproxy.send('rc 2 1500\n')
-            self.mav.recv_match(condition='RC_CHANNELS.chan2_raw==1500',
-                                blocking=True)
-        if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_FIXED_WING:
-            self.progress("NOT IMPLEMENTED")
-        if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_GROUND_ROVER:
-            self.mavproxy.send('rc 3 1700\n')
-            if not self.wait_distance(distance, accuracy=2):
-                self.progress("Failed to reach distance of %u" % distance)
-                return False
-            self.mavproxy.send('rc 3 1500\n')
-            self.mav.recv_match(condition='RC_CHANNELS.chan3_raw==1500',
-                                blocking=True)
-        return True
+        try:
+            if self.mav.mav_type in [mavutil.mavlink.MAV_TYPE_QUADROTOR,
+                                     mavutil.mavlink.MAV_TYPE_HELICOPTER,
+                                     mavutil.mavlink.MAV_TYPE_HEXAROTOR,
+                                     mavutil.mavlink.MAV_TYPE_OCTOROTOR,
+                                     mavutil.mavlink.MAV_TYPE_COAXIAL,
+                                     mavutil.mavlink.MAV_TYPE_TRICOPTER]:
+                self.mavproxy.send('rc 2 1350\n')
+                self.wait_distance(distance, accuracy=5, timeout=60)
+                self.mavproxy.send('rc 2 1500\n')
+                self.mav.recv_match(condition='RC_CHANNELS.chan2_raw==1500',
+                                    blocking=True)
+            if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_FIXED_WING:
+                self.progress("NOT IMPLEMENTED")
+            if self.mav.mav_type == mavutil.mavlink.MAV_TYPE_GROUND_ROVER:
+                self.mavproxy.send('rc 3 1700\n')
+                self.wait_distance(distance, accuracy=2)
+                self.mavproxy.send('rc 3 1500\n')
+                self.mav.recv_match(condition='RC_CHANNELS.chan3_raw==1500',
+                                    blocking=True)
+            return True
+        except ErrorException as ex:
+            self.progress("reach_distance_manual failed with %s" % type(ex).__name__)
+            raise ErrorException()
 
     #################################################
     # WAIT UTILITIES

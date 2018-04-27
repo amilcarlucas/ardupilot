@@ -6,7 +6,7 @@ import os
 import pexpect
 from pymavlink import mavutil
 
-from common import AutoTest
+from common import AutoTest, ErrorException
 from pysim import util
 
 # get location of scripts
@@ -126,25 +126,29 @@ class AutoTestQuadPlane(AutoTest):
 
     def fly_mission(self, filename, fence, height_accuracy=-1):
         """Fly a mission from a file."""
-        self.progress("Flying mission %s" % filename)
-        self.mavproxy.send('wp load %s\n' % filename)
-        self.mavproxy.expect('Flight plan received')
-        self.mavproxy.send('fence load %s\n' % fence)
-        self.mavproxy.send('wp list\n')
-        self.mavproxy.expect('Requesting [0-9]+ waypoints')
-        self.mavproxy.send('mode AUTO\n')
-        self.wait_mode('AUTO')
-        if not self.wait_waypoint(1, 19, max_dist=60, timeout=1200):
+        try:
+            self.progress("Flying mission %s" % filename)
+            self.mavproxy.send('wp load %s\n' % filename)
+            self.mavproxy.expect('Flight plan received')
+            self.mavproxy.send('fence load %s\n' % fence)
+            self.mavproxy.send('wp list\n')
+            self.mavproxy.expect('Requesting [0-9]+ waypoints')
+            self.mavproxy.send('mode AUTO\n')
+            self.wait_mode('AUTO')
+            if not self.wait_waypoint(1, 19, max_dist=60, timeout=1200):
+                return False
+            self.mavproxy.expect('DISARMED')
+            # wait for blood sample here
+            self.mavproxy.send('wp set 20\n')
+            self.arm_vehicle()
+            if not self.wait_waypoint(20, 34, max_dist=60, timeout=1200):
+                return False
+            self.mavproxy.expect('DISARMED')
+            self.progress("Mission OK")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_mission failed with %s" % type(ex).__name__)
             return False
-        self.mavproxy.expect('DISARMED')
-        # wait for blood sample here
-        self.mavproxy.send('wp set 20\n')
-        self.arm_vehicle()
-        if not self.wait_waypoint(20, 34, max_dist=60, timeout=1200):
-            return False
-        self.mavproxy.expect('DISARMED')
-        self.progress("Mission OK")
-        return True
 
     def autotest(self):
         """Autotest QuadPlane in SITL."""

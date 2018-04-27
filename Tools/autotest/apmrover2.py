@@ -8,7 +8,7 @@ import pexpect
 import shutil
 import time
 
-from common import AutoTest
+from common import AutoTest, ErrorException
 
 from pysim import util
 
@@ -193,87 +193,95 @@ class AutoTestRover(AutoTest):
     # Drive a square in manual mode
     def drive_square(self, side=50):
         """Drive a square, Driving N then E ."""
-        self.progress("TEST SQUARE")
-        success = True
+        try:
+            self.progress("TEST SQUARE")
+            success = True
 
-        # use LEARNING Mode
-        self.mavproxy.send('switch 5\n')
-        self.wait_mode('MANUAL')
+            # use LEARNING Mode
+            self.mavproxy.send('switch 5\n')
+            self.wait_mode('MANUAL')
 
-        # first aim north
-        self.progress("\nTurn right towards north")
-        if not self.reach_heading_manual(10):
-            success = False
+            # first aim north
+            self.progress("\nTurn right towards north")
+            if not self.reach_heading_manual(10):
+                success = False
 
-        # save bottom left corner of box as waypoint
-        self.progress("Save WP 1 & 2")
-        self.save_wp()
+            # save bottom left corner of box as waypoint
+            self.progress("Save WP 1 & 2")
+            self.save_wp()
 
-        # pitch forward to fly north
-        self.progress("\nGoing north %u meters" % side)
-        if not self.reach_distance_manual(side):
-            success = False
+            # pitch forward to fly north
+            self.progress("\nGoing north %u meters" % side)
+            if not self.reach_distance_manual(side):
+                success = False
 
-        # save top left corner of square as waypoint
-        self.progress("Save WP 3")
-        self.save_wp()
+            # save top left corner of square as waypoint
+            self.progress("Save WP 3")
+            self.save_wp()
 
-        # roll right to fly east
-        self.progress("\nGoing east %u meters" % side)
-        if not self.reach_heading_manual(100):
-            success = False
-        if not self.reach_distance_manual(side):
-            success = False
+            # roll right to fly east
+            self.progress("\nGoing east %u meters" % side)
+            if not self.reach_heading_manual(100):
+                success = False
+            if not self.reach_distance_manual(side):
+                success = False
 
-        # save top right corner of square as waypoint
-        self.progress("Save WP 4")
-        self.save_wp()
+            # save top right corner of square as waypoint
+            self.progress("Save WP 4")
+            self.save_wp()
 
-        # pitch back to fly south
-        self.progress("\nGoing south %u meters" % side)
-        if not self.reach_heading_manual(190):
-            success = False
-        if not self.reach_distance_manual(side):
-            success = False
+            # pitch back to fly south
+            self.progress("\nGoing south %u meters" % side)
+            if not self.reach_heading_manual(190):
+                success = False
+            if not self.reach_distance_manual(side):
+                success = False
 
-        # save bottom right corner of square as waypoint
-        self.progress("Save WP 5")
-        self.save_wp()
+            # save bottom right corner of square as waypoint
+            self.progress("Save WP 5")
+            self.save_wp()
 
-        # roll left to fly west
-        self.progress("\nGoing west %u meters" % side)
-        if not self.reach_heading_manual(280):
-            success = False
-        if not self.reach_distance_manual(side):
-            success = False
+            # roll left to fly west
+            self.progress("\nGoing west %u meters" % side)
+            if not self.reach_heading_manual(280):
+                success = False
+            if not self.reach_distance_manual(side):
+                success = False
 
-        # save bottom left corner of square (should be near home) as waypoint
-        self.progress("Save WP 6")
-        self.save_wp()
+            # save bottom left corner of square (should be near home) as waypoint
+            self.progress("Save WP 6")
+            self.save_wp()
 
-        return success
+            return success
+        except ErrorException as ex:
+            self.progress("drive_square failed with %s" % type(ex).__name__)
+            return False
 
     def drive_left_circuit(self):
         """Drive a left circuit, 50m on a side."""
-        self.mavproxy.send('switch 6\n')
-        self.wait_mode('MANUAL')
-        self.set_rc(3, 2000)
+        try:
+            self.mavproxy.send('switch 6\n')
+            self.wait_mode('MANUAL')
+            self.set_rc(3, 2000)
 
-        self.progress("Driving left circuit")
-        # do 4 turns
-        for i in range(0, 4):
-            # hard left
-            self.progress("Starting turn %u" % i)
-            self.set_rc(1, 1000)
-            if not self.wait_heading(270 - (90*i), accuracy=10):
-                return False
-            self.set_rc(1, 1500)
-            self.progress("Starting leg %u" % i)
-            if not self.wait_distance(50, accuracy=7):
-                return False
-        self.set_rc(3, 1500)
-        self.progress("Circuit complete")
-        return True
+            self.progress("Driving left circuit")
+            # do 4 turns
+            for i in range(0, 4):
+                # hard left
+                self.progress("Starting turn %u" % i)
+                self.set_rc(1, 1000)
+                if not self.wait_heading(270 - (90*i), accuracy=10):
+                    return False
+                self.set_rc(1, 1500)
+                self.progress("Starting leg %u" % i)
+                if not self.wait_distance(50, accuracy=7):
+                    return False
+            self.set_rc(3, 1500)
+            self.progress("Circuit complete")
+            return True
+        except ErrorException as ex:
+            self.progress("drive_left_circuit failed with %s" % type(ex).__name__)
+            return False
 
     # def test_throttle_failsafe(self, home, distance_min=10, side=60,
     #                            timeout=300):
@@ -330,19 +338,23 @@ class AutoTestRover(AutoTest):
     #################################################
     def drive_mission(self, filename):
         """Drive a mission from a file."""
-        self.progress("Driving mission %s" % filename)
-        self.mavproxy.send('wp load %s\n' % filename)
-        self.mavproxy.expect('Flight plan received')
-        self.mavproxy.send('wp list\n')
-        self.mavproxy.expect('Requesting [0-9]+ waypoints')
-        self.mavproxy.send('switch 4\n')  # auto mode
-        self.set_rc(3, 1500)
-        self.wait_mode('AUTO')
-        if not self.wait_waypoint(1, 4, max_dist=5):
+        try:
+            self.progress("Driving mission %s" % filename)
+            self.mavproxy.send('wp load %s\n' % filename)
+            self.mavproxy.expect('Flight plan received')
+            self.mavproxy.send('wp list\n')
+            self.mavproxy.expect('Requesting [0-9]+ waypoints')
+            self.mavproxy.send('switch 4\n')  # auto mode
+            self.set_rc(3, 1500)
+            self.wait_mode('AUTO')
+            if not self.wait_waypoint(1, 4, max_dist=5):
+                return False
+            self.wait_mode('HOLD')
+            self.progress("Mission OK")
+            return True
+        except ErrorException as ex:
+            self.progress("drive_mission failed with %s" % type(ex).__name__)
             return False
-        self.wait_mode('HOLD')
-        self.progress("Mission OK")
-        return True
 
     def do_get_banner(self):
         self.mavproxy.send("long DO_SEND_BANNER 1\n")
@@ -362,112 +374,124 @@ class AutoTestRover(AutoTest):
         return False
 
     def drive_brake_get_stopping_distance(self, speed):
-        # measure our stopping distance:
-        old_cruise_speed = self.get_parameter('CRUISE_SPEED')
-        old_accel_max = self.get_parameter('ATC_ACCEL_MAX')
+        try:
+            # measure our stopping distance:
+            old_cruise_speed = self.get_parameter('CRUISE_SPEED')
+            old_accel_max = self.get_parameter('ATC_ACCEL_MAX')
 
-        # controller tends not to meet cruise speed (max of ~14 when 15
-        # set), thus *1.2
-        self.set_parameter('CRUISE_SPEED', speed*1.2)
-        # at time of writing, the vehicle is only capable of 10m/s/s accel
-        self.set_parameter('ATC_ACCEL_MAX', 15)
-        self.mavproxy.send("mode STEERING\n")
-        self.wait_mode('STEERING')
-        self.set_rc(3, 2000)
-        self.wait_groundspeed(15, 100)
-        initial = self.mav.location()
-        initial_time = time.time()
-        while time.time() - initial_time < 2:
-            # wait for a position update from the autopilot
-            start = self.mav.location()
-            if start != initial:
-                break
-        self.set_rc(3, 1500)
-        self.wait_groundspeed(0, 0.2)  # why do we not stop?!
-        initial = self.mav.location()
-        initial_time = time.time()
-        while time.time() - initial_time < 2:
-            # wait for a position update from the autopilot
-            stop = self.mav.location()
-            if stop != initial:
-                break
-        delta = self.get_distance(start, stop)
+            # controller tends not to meet cruise speed (max of ~14 when 15
+            # set), thus *1.2
+            self.set_parameter('CRUISE_SPEED', speed*1.2)
+            # at time of writing, the vehicle is only capable of 10m/s/s accel
+            self.set_parameter('ATC_ACCEL_MAX', 15)
+            self.mavproxy.send("mode STEERING\n")
+            self.wait_mode('STEERING')
+            self.set_rc(3, 2000)
+            self.wait_groundspeed(15, 100)
+            initial = self.mav.location()
+            initial_time = time.time()
+            while time.time() - initial_time < 2:
+                # wait for a position update from the autopilot
+                start = self.mav.location()
+                if start != initial:
+                    break
+            self.set_rc(3, 1500)
+            self.wait_groundspeed(0, 0.2)  # why do we not stop?!
+            initial = self.mav.location()
+            initial_time = time.time()
+            while time.time() - initial_time < 2:
+                # wait for a position update from the autopilot
+                stop = self.mav.location()
+                if stop != initial:
+                    break
+            delta = self.get_distance(start, stop)
 
-        self.set_parameter('CRUISE_SPEED', old_cruise_speed)
-        self.set_parameter('ATC_ACCEL_MAX', old_accel_max)
+            self.set_parameter('CRUISE_SPEED', old_cruise_speed)
+            self.set_parameter('ATC_ACCEL_MAX', old_accel_max)
 
-        return delta
+            return delta
+        except ErrorException as ex:
+            self.progress("drive_brake_get_stopping_distance failed with %s" % type(ex).__name__)
+            raise ErrorException()
 
     def drive_brake(self):
-        old_using_brake = self.get_parameter('ATC_BRAKE')
-        old_cruise_speed = self.get_parameter('CRUISE_SPEED')
+        try:
+            old_using_brake = self.get_parameter('ATC_BRAKE')
+            old_cruise_speed = self.get_parameter('CRUISE_SPEED')
 
-        self.set_parameter('CRUISE_SPEED', 15)
-        self.set_parameter('ATC_BRAKE', 0)
+            self.set_parameter('CRUISE_SPEED', 15)
+            self.set_parameter('ATC_BRAKE', 0)
 
-        distance_without_brakes = self.drive_brake_get_stopping_distance(15)
+            distance_without_brakes = self.drive_brake_get_stopping_distance(15)
 
-        # brakes on:
-        self.set_parameter('ATC_BRAKE', 1)
-        distance_with_brakes = self.drive_brake_get_stopping_distance(15)
-        # revert state:
-        self.set_parameter('ATC_BRAKE', old_using_brake)
-        self.set_parameter('CRUISE_SPEED', old_cruise_speed)
+            # brakes on:
+            self.set_parameter('ATC_BRAKE', 1)
+            distance_with_brakes = self.drive_brake_get_stopping_distance(15)
+            # revert state:
+            self.set_parameter('ATC_BRAKE', old_using_brake)
+            self.set_parameter('CRUISE_SPEED', old_cruise_speed)
 
-        delta = distance_without_brakes - distance_with_brakes
-        if delta < distance_without_brakes * 0.05:  # 5% isn't asking for much
-            self.progress("Brakes have negligible effect"
-                          "(with=%0.2fm without=%0.2fm delta=%0.2fm)" %
-                          (distance_with_brakes,
-                           distance_without_brakes,
-                           delta))
+            delta = distance_without_brakes - distance_with_brakes
+            if delta < distance_without_brakes * 0.05:  # 5% isn't asking for much
+                self.progress("Brakes have negligible effect"
+                              "(with=%0.2fm without=%0.2fm delta=%0.2fm)" %
+                              (distance_with_brakes,
+                               distance_without_brakes,
+                               delta))
+                return False
+            else:
+                self.progress(
+                    "Brakes work (with=%0.2fm without=%0.2fm delta=%0.2fm)" %
+                    (distance_with_brakes, distance_without_brakes, delta))
+
+            return True
+        except ErrorException as ex:
+            self.progress("drive_brake failed with %s" % type(ex).__name__)
             return False
-        else:
-            self.progress(
-                "Brakes work (with=%0.2fm without=%0.2fm delta=%0.2fm)" %
-                (distance_with_brakes, distance_without_brakes, delta))
-
-        return True
 
     def drive_rtl_mission(self):
-        mission_filepath = os.path.join(testdir,
-                                        "ArduRover-Missions",
-                                        "rtl.txt")
-        self.mavproxy.send('wp load %s\n' % mission_filepath)
-        self.mavproxy.expect('Flight plan received')
-        self.mavproxy.send('switch 4\n')  # auto mode
-        self.set_rc(3, 1500)
-        self.wait_mode('AUTO')
-        self.mavproxy.expect('Executing RTL')
+        try:
+            mission_filepath = os.path.join(testdir,
+                                            "ArduRover-Missions",
+                                            "rtl.txt")
+            self.mavproxy.send('wp load %s\n' % mission_filepath)
+            self.mavproxy.expect('Flight plan received')
+            self.mavproxy.send('switch 4\n')  # auto mode
+            self.set_rc(3, 1500)
+            self.wait_mode('AUTO')
+            self.mavproxy.expect('Executing RTL')
 
-        m = self.mav.recv_match(type='NAV_CONTROLLER_OUTPUT',
-                                blocking=True,
-                                timeout=0.1)
-        if m is None:
-            self.progress("Did not receive NAV_CONTROLLER_OUTPUT message")
+            m = self.mav.recv_match(type='NAV_CONTROLLER_OUTPUT',
+                                    blocking=True,
+                                    timeout=0.1)
+            if m is None:
+                self.progress("Did not receive NAV_CONTROLLER_OUTPUT message")
+                return False
+
+            wp_dist_min = 5
+            if m.wp_dist < wp_dist_min:
+                self.progress("Did not start at least 5 metres from destination")
+                return False
+
+            self.progress("NAV_CONTROLLER_OUTPUT.wp_dist looks good (%u >= %u)" %
+                          (m.wp_dist, wp_dist_min,))
+
+            self.wait_mode('HOLD')
+
+            pos = self.mav.location()
+            home_distance = self.get_distance(HOME, pos)
+            home_distance_max = 5
+            if home_distance > home_distance_max:
+                self.progress("Did not get home (%u metres distant > %u)" %
+                              (home_distance, home_distance_max))
+                return False
+            self.mavproxy.send('switch 6\n')
+            self.wait_mode('MANUAL')
+            self.progress("RTL Mission OK")
+            return True
+        except ErrorException as ex:
+            self.progress("drive_rtl_mission failed with %s" % type(ex).__name__)
             return False
-
-        wp_dist_min = 5
-        if m.wp_dist < wp_dist_min:
-            self.progress("Did not start at least 5 metres from destination")
-            return False
-
-        self.progress("NAV_CONTROLLER_OUTPUT.wp_dist looks good (%u >= %u)" %
-                      (m.wp_dist, wp_dist_min,))
-
-        self.wait_mode('HOLD')
-
-        pos = self.mav.location()
-        home_distance = self.get_distance(HOME, pos)
-        home_distance_max = 5
-        if home_distance > home_distance_max:
-            self.progress("Did not get home (%u metres distant > %u)" %
-                          (home_distance, home_distance_max))
-            return False
-        self.mavproxy.send('switch 6\n')
-        self.wait_mode('MANUAL')
-        self.progress("RTL Mission OK")
-        return True
 
     def test_servorelayevents(self):
         self.mavproxy.send("relay set 0 0\n")

@@ -10,7 +10,7 @@ from pymavlink import mavutil
 
 from pysim import util
 
-from common import AutoTest
+from common import AutoTest, ErrorException
 
 # get location of scripts
 testdir = os.path.dirname(os.path.realpath(__file__))
@@ -104,404 +104,421 @@ class AutoTestPlane(AutoTest):
 
     def takeoff(self):
         """Takeoff get to 30m altitude."""
+        try:
+            self.wait_ready_to_arm()
+            self.arm_vehicle()
 
-        self.wait_ready_to_arm()
-        self.arm_vehicle()
+            self.mavproxy.send('switch 4\n')
+            self.wait_mode('FBWA')
 
-        self.mavproxy.send('switch 4\n')
-        self.wait_mode('FBWA')
+            # some rudder to counteract the prop torque
+            self.set_rc(4, 1700)
 
-        # some rudder to counteract the prop torque
-        self.set_rc(4, 1700)
+            # some up elevator to keep the tail down
+            self.set_rc(2, 1200)
 
-        # some up elevator to keep the tail down
-        self.set_rc(2, 1200)
+            # get it moving a bit first
+            self.set_rc(3, 1300)
+            self.mav.recv_match(condition='VFR_HUD.groundspeed>6', blocking=True)
 
-        # get it moving a bit first
-        self.set_rc(3, 1300)
-        self.mav.recv_match(condition='VFR_HUD.groundspeed>6', blocking=True)
+            # a bit faster again, straighten rudder
+            self.set_rc(3, 1600)
+            self.set_rc(4, 1500)
+            self.mav.recv_match(condition='VFR_HUD.groundspeed>12', blocking=True)
 
-        # a bit faster again, straighten rudder
-        self.set_rc(3, 1600)
-        self.set_rc(4, 1500)
-        self.mav.recv_match(condition='VFR_HUD.groundspeed>12', blocking=True)
+            # hit the gas harder now, and give it some more elevator
+            self.set_rc(2, 1100)
+            self.set_rc(3, 2000)
 
-        # hit the gas harder now, and give it some more elevator
-        self.set_rc(2, 1100)
-        self.set_rc(3, 2000)
+            # gain a bit of altitude
+            self.wait_altitude(self.homeloc.alt+150,
+                                      self.homeloc.alt+180,
+                                      timeout=30)
 
-        # gain a bit of altitude
-        if not self.wait_altitude(self.homeloc.alt+150,
-                                  self.homeloc.alt+180,
-                                  timeout=30):
+            # level off
+            self.set_rc(2, 1500)
+
+            self.progress("TAKEOFF COMPLETE")
+            return True
+        except ErrorException as ex:
+            self.progress("takeoff failed with %s" % type(ex).__name__)
             return False
-
-        # level off
-        self.set_rc(2, 1500)
-
-        self.progress("TAKEOFF COMPLETE")
-        return True
 
     def fly_left_circuit(self):
         """Fly a left circuit, 200m on a side."""
-        self.mavproxy.send('switch 4\n')
-        self.wait_mode('FBWA')
-        self.set_rc(3, 2000)
-        if not self.wait_level_flight():
-            return False
+        try:
+            self.mavproxy.send('switch 4\n')
+            self.wait_mode('FBWA')
+            self.set_rc(3, 2000)
+            self.wait_level_flight()
 
-        self.progress("Flying left circuit")
-        # do 4 turns
-        for i in range(0, 4):
-            # hard left
-            self.progress("Starting turn %u" % i)
-            self.set_rc(1, 1000)
-            if not self.wait_heading(270 - (90*i), accuracy=10):
-                return False
-            self.set_rc(1, 1500)
-            self.progress("Starting leg %u" % i)
-            if not self.wait_distance(100, accuracy=20):
-                return False
-        self.progress("Circuit complete")
-        return True
+            self.progress("Flying left circuit")
+            # do 4 turns
+            for i in range(0, 4):
+                # hard left
+                self.progress("Starting turn %u" % i)
+                self.set_rc(1, 1000)
+                self.wait_heading(270 - (90*i), accuracy=10)
+                self.set_rc(1, 1500)
+                self.progress("Starting leg %u" % i)
+                self.wait_distance(100, accuracy=20)
+            self.progress("Circuit complete")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_left_circuit failed with %s" % type(ex).__name__)
+            return False
 
     def fly_RTL(self):
         """Fly to home."""
-        self.progress("Flying home in RTL")
-        self.mavproxy.send('switch 2\n')
-        self.wait_mode('RTL')
-        if not self.wait_location(self.homeloc,
-                                  accuracy=120,
-                                  target_altitude=self.homeloc.alt+100,
-                                  height_accuracy=20,
-                                  timeout=180):
+        try:
+            self.progress("Flying home in RTL")
+            self.mavproxy.send('switch 2\n')
+            self.wait_mode('RTL')
+            self.wait_location(self.homeloc,
+                                      accuracy=120,
+                                      target_altitude=self.homeloc.alt+100,
+                                      height_accuracy=20,
+                                      timeout=180)
+            self.progress("RTL Complete")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_RTL failed with %s" % type(ex).__name__)
             return False
-        self.progress("RTL Complete")
-        return True
 
     def fly_LOITER(self, num_circles=4):
         """Loiter where we are."""
-        self.progress("Testing LOITER for %u turns" % num_circles)
-        self.mavproxy.send('loiter\n')
-        self.wait_mode('LOITER')
+        try:
+            self.progress("Testing LOITER for %u turns" % num_circles)
+            self.mavproxy.send('loiter\n')
+            self.wait_mode('LOITER')
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        initial_alt = m.alt
-        self.progress("Initial altitude %u\n" % initial_alt)
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            initial_alt = m.alt
+            self.progress("Initial altitude %u\n" % initial_alt)
 
-        while num_circles > 0:
-            if not self.wait_heading(0, accuracy=10, timeout=60):
+            while num_circles > 0:
+                self.wait_heading(0, accuracy=10, timeout=60)
+                self.wait_heading(180, accuracy=10, timeout=60)
+                num_circles -= 1
+                self.progress("Loiter %u circles left" % num_circles)
+
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            final_alt = m.alt
+            self.progress("Final altitude %u initial %u\n" %
+                          (final_alt, initial_alt))
+
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+
+            if abs(final_alt - initial_alt) > 20:
+                self.progress("Failed to maintain altitude")
                 return False
-            if not self.wait_heading(180, accuracy=10, timeout=60):
-                return False
-            num_circles -= 1
-            self.progress("Loiter %u circles left" % num_circles)
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        final_alt = m.alt
-        self.progress("Final altitude %u initial %u\n" %
-                      (final_alt, initial_alt))
-
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-
-        if abs(final_alt - initial_alt) > 20:
-            self.progress("Failed to maintain altitude")
+            self.progress("Completed Loiter OK")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_LOITER failed with %s" % type(ex).__name__)
             return False
-
-        self.progress("Completed Loiter OK")
-        return True
 
     def fly_CIRCLE(self, num_circles=1):
         """Circle where we are."""
-        self.progress("Testing CIRCLE for %u turns" % num_circles)
-        self.mavproxy.send('mode CIRCLE\n')
-        self.wait_mode('CIRCLE')
+        try:
+            self.progress("Testing CIRCLE for %u turns" % num_circles)
+            self.mavproxy.send('mode CIRCLE\n')
+            self.wait_mode('CIRCLE')
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        initial_alt = m.alt
-        self.progress("Initial altitude %u\n" % initial_alt)
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            initial_alt = m.alt
+            self.progress("Initial altitude %u\n" % initial_alt)
 
-        while num_circles > 0:
-            if not self.wait_heading(0, accuracy=10, timeout=60):
+            while num_circles > 0:
+                self.wait_heading(0, accuracy=10, timeout=60)
+                self.wait_heading(180, accuracy=10, timeout=60)
+                num_circles -= 1
+                self.progress("CIRCLE %u circles left" % num_circles)
+
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            final_alt = m.alt
+            self.progress("Final altitude %u initial %u\n" %
+                          (final_alt, initial_alt))
+
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+
+            if abs(final_alt - initial_alt) > 20:
+                self.progress("Failed to maintain altitude")
                 return False
-            if not self.wait_heading(180, accuracy=10, timeout=60):
-                return False
-            num_circles -= 1
-            self.progress("CIRCLE %u circles left" % num_circles)
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        final_alt = m.alt
-        self.progress("Final altitude %u initial %u\n" %
-                      (final_alt, initial_alt))
-
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-
-        if abs(final_alt - initial_alt) > 20:
-            self.progress("Failed to maintain altitude")
+            self.progress("Completed CIRCLE OK")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_CIRCLE failed with %s" % type(ex).__name__)
             return False
-
-        self.progress("Completed CIRCLE OK")
-        return True
 
     def wait_level_flight(self, accuracy=5, timeout=30):
         """Wait for level flight."""
-        tstart = self.get_sim_time()
-        self.progress("Waiting for level flight")
-        self.set_rc(1, 1500)
-        self.set_rc(2, 1500)
-        self.set_rc(4, 1500)
-        while self.get_sim_time() < tstart + timeout:
-            m = self.mav.recv_match(type='ATTITUDE', blocking=True)
-            roll = math.degrees(m.roll)
-            pitch = math.degrees(m.pitch)
-            self.progress("Roll=%.1f Pitch=%.1f" % (roll, pitch))
-            if math.fabs(roll) <= accuracy and math.fabs(pitch) <= accuracy:
-                self.progress("Attained level flight")
-                return True
-        self.progress("Failed to attain level flight")
-        return False
+        try:
+            tstart = self.get_sim_time()
+            self.progress("Waiting for level flight")
+            self.set_rc(1, 1500)
+            self.set_rc(2, 1500)
+            self.set_rc(4, 1500)
+            while self.get_sim_time() < tstart + timeout:
+                m = self.mav.recv_match(type='ATTITUDE', blocking=True)
+                roll = math.degrees(m.roll)
+                pitch = math.degrees(m.pitch)
+                self.progress("Roll=%.1f Pitch=%.1f" % (roll, pitch))
+                if math.fabs(roll) <= accuracy and math.fabs(pitch) <= accuracy:
+                    self.progress("Attained level flight")
+                    return True
+            self.progress("Failed to attain level flight")
+            raise ErrorException()
+        except ErrorException as ex:
+            self.progress("wait_level_flight failed with %s" % type(ex).__name__)
+            raise ErrorException()
 
     def change_altitude(self, altitude, accuracy=30):
         """Get to a given altitude."""
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-        alt_error = self.mav.messages['VFR_HUD'].alt - altitude
-        if alt_error > 0:
-            self.set_rc(2, 2000)
-        else:
-            self.set_rc(2, 1000)
-        if not self.wait_altitude(altitude-accuracy/2, altitude+accuracy/2):
+        try:
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+            alt_error = self.mav.messages['VFR_HUD'].alt - altitude
+            if alt_error > 0:
+                self.set_rc(2, 2000)
+            else:
+                self.set_rc(2, 1000)
+            self.wait_altitude(altitude-accuracy/2, altitude+accuracy/2)
+            self.set_rc(2, 1500)
+            self.progress("Reached target altitude at %u" %
+                          self.mav.messages['VFR_HUD'].alt)
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("change_altitude failed with %s" % type(ex).__name__)
             return False
-        self.set_rc(2, 1500)
-        self.progress("Reached target altitude at %u" %
-                      self.mav.messages['VFR_HUD'].alt)
-        return self.wait_level_flight()
 
     def axial_left_roll(self, count=1):
         """Fly a left axial roll."""
         # full throttle!
-        self.set_rc(3, 2000)
-        if not self.change_altitude(self.homeloc.alt+300):
+        try:
+            self.set_rc(3, 2000)
+            self.change_altitude(self.homeloc.alt+300)
+
+            # fly the roll in manual
+            self.mavproxy.send('switch 6\n')
+            self.wait_mode('MANUAL')
+
+            while count > 0:
+                self.progress("Starting roll")
+                self.set_rc(1, 1000)
+                self.wait_roll(-150, accuracy=90)
+                self.wait_roll(150, accuracy=90)
+                self.wait_roll(0, accuracy=90)
+                count -= 1
+
+            # back to FBWA
+            self.set_rc(1, 1500)
+            self.mavproxy.send('switch 4\n')
+            self.wait_mode('FBWA')
+            self.set_rc(3, 1700)
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("axial_left_roll failed with %s" % type(ex).__name__)
+            # Stablize the roll before exiting
+            self.set_rc(1, 1500)
             return False
-
-        # fly the roll in manual
-        self.mavproxy.send('switch 6\n')
-        self.wait_mode('MANUAL')
-
-        while count > 0:
-            self.progress("Starting roll")
-            self.set_rc(1, 1000)
-            if not self.wait_roll(-150, accuracy=90):
-                self.set_rc(1, 1500)
-                return False
-            if not self.wait_roll(150, accuracy=90):
-                self.set_rc(1, 1500)
-                return False
-            if not self.wait_roll(0, accuracy=90):
-                self.set_rc(1, 1500)
-                return False
-            count -= 1
-
-        # back to FBWA
-        self.set_rc(1, 1500)
-        self.mavproxy.send('switch 4\n')
-        self.wait_mode('FBWA')
-        self.set_rc(3, 1700)
-        return self.wait_level_flight()
 
     def inside_loop(self, count=1):
         """Fly a inside loop."""
         # full throttle!
-        self.set_rc(3, 2000)
-        if not self.change_altitude(self.homeloc.alt+300):
+        try:
+            self.set_rc(3, 2000)
+            self.change_altitude(self.homeloc.alt+300)
+            # fly the loop in manual
+            self.mavproxy.send('switch 6\n')
+            self.wait_mode('MANUAL')
+
+            while count > 0:
+                self.progress("Starting loop")
+                self.set_rc(2, 1000)
+                self.wait_pitch(-60, accuracy=20)
+                self.wait_pitch(0, accuracy=20)
+                count -= 1
+
+            # back to FBWA
+            self.set_rc(2, 1500)
+            self.mavproxy.send('switch 4\n')
+            self.wait_mode('FBWA')
+            self.set_rc(3, 1700)
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("inside_loop failed with %s" % type(ex).__name__)
             return False
-
-        # fly the loop in manual
-        self.mavproxy.send('switch 6\n')
-        self.wait_mode('MANUAL')
-
-        while count > 0:
-            self.progress("Starting loop")
-            self.set_rc(2, 1000)
-            if not self.wait_pitch(-60, accuracy=20):
-                return False
-            if not self.wait_pitch(0, accuracy=20):
-                return False
-            count -= 1
-
-        # back to FBWA
-        self.set_rc(2, 1500)
-        self.mavproxy.send('switch 4\n')
-        self.wait_mode('FBWA')
-        self.set_rc(3, 1700)
-        return self.wait_level_flight()
 
     def test_stabilize(self, count=1):
         """Fly stabilize mode."""
         # full throttle!
-        self.set_rc(3, 2000)
-        self.set_rc(2, 1300)
-        if not self.change_altitude(self.homeloc.alt+300):
+        try:
+            self.set_rc(3, 2000)
+            self.set_rc(2, 1300)
+            self.change_altitude(self.homeloc.alt+300)
+            self.set_rc(2, 1500)
+
+            self.mavproxy.send("mode STABILIZE\n")
+            self.wait_mode('STABILIZE')
+
+            count = 1
+            while count > 0:
+                self.progress("Starting roll")
+                self.set_rc(1, 2000)
+                self.wait_roll(-150, accuracy=90)
+                self.wait_roll(150, accuracy=90)
+                self.wait_roll(0, accuracy=90)
+                count -= 1
+
+            self.set_rc(1, 1500)
+            self.wait_roll(0, accuracy=5)
+
+            # back to FBWA
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+            self.set_rc(3, 1700)
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("test_stabilize failed with %s" % type(ex).__name__)
             return False
-        self.set_rc(2, 1500)
-
-        self.mavproxy.send("mode STABILIZE\n")
-        self.wait_mode('STABILIZE')
-
-        count = 1
-        while count > 0:
-            self.progress("Starting roll")
-            self.set_rc(1, 2000)
-            if not self.wait_roll(-150, accuracy=90):
-                return False
-            if not self.wait_roll(150, accuracy=90):
-                return False
-            if not self.wait_roll(0, accuracy=90):
-                return False
-            count -= 1
-
-        self.set_rc(1, 1500)
-        if not self.wait_roll(0, accuracy=5):
-            return False
-
-        # back to FBWA
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-        self.set_rc(3, 1700)
-        return self.wait_level_flight()
 
     def test_acro(self, count=1):
         """Fly ACRO mode."""
         # full throttle!
-        self.set_rc(3, 2000)
-        self.set_rc(2, 1300)
-        if not self.change_altitude(self.homeloc.alt+300):
+        try:
+            self.set_rc(3, 2000)
+            self.set_rc(2, 1300)
+            self.change_altitude(self.homeloc.alt+300)
+            self.set_rc(2, 1500)
+
+            self.mavproxy.send("mode ACRO\n")
+            self.wait_mode('ACRO')
+
+            count = 1
+            while count > 0:
+                self.progress("Starting roll")
+                self.set_rc(1, 1000)
+                self.wait_roll(-150, accuracy=90)
+                self.wait_roll(150, accuracy=90)
+                self.wait_roll(0, accuracy=90)
+                count -= 1
+            self.set_rc(1, 1500)
+
+            # back to FBWA
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+
+            self.wait_level_flight()
+
+            self.mavproxy.send("mode ACRO\n")
+            self.wait_mode('ACRO')
+
+            count = 2
+            while count > 0:
+                self.progress("Starting loop")
+                self.set_rc(2, 1000)
+                self.wait_pitch(-60, accuracy=20)
+                self.wait_pitch(0, accuracy=20)
+                count -= 1
+
+            self.set_rc(2, 1500)
+
+            # back to FBWA
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+            self.set_rc(3, 1700)
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("test_acro failed with %s" % type(ex).__name__)
             return False
-        self.set_rc(2, 1500)
-
-        self.mavproxy.send("mode ACRO\n")
-        self.wait_mode('ACRO')
-
-        count = 1
-        while count > 0:
-            self.progress("Starting roll")
-            self.set_rc(1, 1000)
-            if not self.wait_roll(-150, accuracy=90):
-                return False
-            if not self.wait_roll(150, accuracy=90):
-                return False
-            if not self.wait_roll(0, accuracy=90):
-                return False
-            count -= 1
-        self.set_rc(1, 1500)
-
-        # back to FBWA
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-
-        self.wait_level_flight()
-
-        self.mavproxy.send("mode ACRO\n")
-        self.wait_mode('ACRO')
-
-        count = 2
-        while count > 0:
-            self.progress("Starting loop")
-            self.set_rc(2, 1000)
-            if not self.wait_pitch(-60, accuracy=20):
-                return False
-            if not self.wait_pitch(0, accuracy=20):
-                return False
-            count -= 1
-
-        self.set_rc(2, 1500)
-
-        # back to FBWA
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-        self.set_rc(3, 1700)
-        return self.wait_level_flight()
 
     def test_FBWB(self, count=1, mode='FBWB'):
         """Fly FBWB or CRUISE mode."""
-        self.mavproxy.send("mode %s\n" % mode)
-        self.wait_mode(mode)
-        self.set_rc(3, 1700)
-        self.set_rc(2, 1500)
+        try:
+            self.mavproxy.send("mode %s\n" % mode)
+            self.wait_mode(mode)
+            self.set_rc(3, 1700)
+            self.set_rc(2, 1500)
 
-        # lock in the altitude by asking for an altitude change then releasing
-        self.set_rc(2, 1000)
-        self.wait_distance(50, accuracy=20)
-        self.set_rc(2, 1500)
-        self.wait_distance(50, accuracy=20)
+            # lock in the altitude by asking for an altitude change then releasing
+            self.set_rc(2, 1000)
+            self.wait_distance(50, accuracy=20)
+            self.set_rc(2, 1500)
+            self.wait_distance(50, accuracy=20)
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        initial_alt = m.alt
-        self.progress("Initial altitude %u\n" % initial_alt)
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            initial_alt = m.alt
+            self.progress("Initial altitude %u\n" % initial_alt)
 
-        self.progress("Flying right circuit")
-        # do 4 turns
-        for i in range(0, 4):
-            # hard left
-            self.progress("Starting turn %u" % i)
-            self.set_rc(1, 1800)
-            if not self.wait_heading(0 + (90*i), accuracy=20, timeout=60):
+            self.progress("Flying right circuit")
+            # do 4 turns
+            for i in range(0, 4):
+                # hard left
+                self.progress("Starting turn %u" % i)
+                self.set_rc(1, 1800)
+                if not self.wait_heading(0 + (90*i), accuracy=20, timeout=60):
+                    self.set_rc(1, 1500)
+                    return False
                 self.set_rc(1, 1500)
-                return False
-            self.set_rc(1, 1500)
-            self.progress("Starting leg %u" % i)
-            if not self.wait_distance(100, accuracy=20):
-                return False
-        self.progress("Circuit complete")
+                self.progress("Starting leg %u" % i)
+                self.wait_distance(100, accuracy=20)
+            self.progress("Circuit complete")
 
-        self.progress("Flying rudder left circuit")
-        # do 4 turns
-        for i in range(0, 4):
-            # hard left
-            self.progress("Starting turn %u" % i)
-            self.set_rc(4, 1900)
-            if not self.wait_heading(360 - (90*i), accuracy=20, timeout=60):
+            self.progress("Flying rudder left circuit")
+            # do 4 turns
+            for i in range(0, 4):
+                # hard left
+                self.progress("Starting turn %u" % i)
+                self.set_rc(4, 1900)
+                if not self.wait_heading(360 - (90*i), accuracy=20, timeout=60):
+                    self.set_rc(4, 1500)
+                    return False
                 self.set_rc(4, 1500)
+                self.progress("Starting leg %u" % i)
+                self.wait_distance(100, accuracy=20)
+            self.progress("Circuit complete")
+
+            m = self.mav.recv_match(type='VFR_HUD', blocking=True)
+            final_alt = m.alt
+            self.progress("Final altitude %u initial %u\n" %
+                          (final_alt, initial_alt))
+
+            # back to FBWA
+            self.mavproxy.send('mode FBWA\n')
+            self.wait_mode('FBWA')
+
+            if abs(final_alt - initial_alt) > 20:
+                self.progress("Failed to maintain altitude")
                 return False
-            self.set_rc(4, 1500)
-            self.progress("Starting leg %u" % i)
-            if not self.wait_distance(100, accuracy=20):
-                return False
-        self.progress("Circuit complete")
 
-        m = self.mav.recv_match(type='VFR_HUD', blocking=True)
-        final_alt = m.alt
-        self.progress("Final altitude %u initial %u\n" %
-                      (final_alt, initial_alt))
-
-        # back to FBWA
-        self.mavproxy.send('mode FBWA\n')
-        self.wait_mode('FBWA')
-
-        if abs(final_alt - initial_alt) > 20:
-            self.progress("Failed to maintain altitude")
+            return self.wait_level_flight()
+        except ErrorException as ex:
+            self.progress("test_FBWB failed with %s" % type(ex).__name__)
             return False
-
-        return self.wait_level_flight()
 
     def fly_mission(self, filename, height_accuracy=-1, target_altitude=None):
         """Fly a mission from a file."""
-        self.progress("Flying mission %s" % filename)
-        self.mavproxy.send('wp load %s\n' % filename)
-        self.mavproxy.expect('Flight plan received')
-        self.mavproxy.send('wp list\n')
-        self.mavproxy.expect('Requesting [0-9]+ waypoints')
-        self.mavproxy.send('switch 1\n')  # auto mode
-        self.wait_mode('AUTO')
-        if not self.wait_waypoint(1, 7, max_dist=60):
+        try:
+            self.progress("Flying mission %s" % filename)
+            self.mavproxy.send('wp load %s\n' % filename)
+            self.mavproxy.expect('Flight plan received')
+            self.mavproxy.send('wp list\n')
+            self.mavproxy.expect('Requesting [0-9]+ waypoints')
+            self.mavproxy.send('switch 1\n')  # auto mode
+            self.wait_mode('AUTO')
+            self.wait_waypoint(1, 7, max_dist=60)
+            self.wait_groundspeed(0, 0.5, timeout=60)
+            self.mavproxy.expect("Auto disarmed")
+            self.progress("Mission OK")
+            return True
+        except ErrorException as ex:
+            self.progress("fly_mission failed with %s" % type(ex).__name__)
             return False
-        if not self.wait_groundspeed(0, 0.5, timeout=60):
-            return False
-        self.mavproxy.expect("Auto disarmed")
-        self.progress("Mission OK")
-        return True
 
     def autotest(self):
         """Autotest ArduPlane in SITL."""
