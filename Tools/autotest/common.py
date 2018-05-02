@@ -640,10 +640,14 @@ class AutoTest(ABC):
 
     def wait_mode(self, mode, timeout=None):
         """Wait for mode to change."""
+        mode_map = self.mav.mode_mapping()
+        if mode_map is None or mode not in mode_map:
+            self.progress("Unknown mode '%s'" % mode)
+            raise ErrorException()
         self.progress("Waiting for mode %s" % mode)
         tstart = self.get_sim_time()
         hastimeout = False
-        while self.mav.flightmode.upper() != mode.upper() and not hastimeout:
+        while self.mav.flightmode != mode and not hastimeout:
             if timeout is not None:
                 hastimeout = self.get_sim_time() > tstart + timeout
             self.mav.wait_heartbeat()
