@@ -33,53 +33,65 @@ class AutoTestTimeoutException(ErrorException):
     pass
 
 
-class WaitModeTimeout(ErrorException):
+class WaitModeTimeout(AutoTestTimeoutException):
     """Thrown when fails to achieve given mode change."""
     pass
 
 
-class WaitAltitudeTimout(ErrorException):
+class WaitAltitudeTimout(AutoTestTimeoutException):
     """Thrown when fails to achieve given altitude range."""
     pass
 
 
-class WaitGroundSpeedTimeout(ErrorException):
+class WaitGroundSpeedTimeout(AutoTestTimeoutException):
     """Thrown when fails to achieve given ground speed range."""
     pass
 
 
-class WaitRollTimeout(ErrorException):
+class WaitRollTimeout(AutoTestTimeoutException):
     """Thrown when fails to achieve given roll in degrees."""
     pass
 
 
-class WaitPitchTimeout(ErrorException):
+class WaitPitchTimeout(AutoTestTimeoutException):
     """Thrown when fails to achieve given pitch in degrees."""
     pass
 
 
-class WaitHeadingTimeout(ErrorException):
+class WaitHeadingTimeout(AutoTestTimeoutException):
     """Thrown when fails to achieve given heading."""
     pass
 
 
-class WaitDistanceTimeout(ErrorException):
+class WaitDistanceTimeout(AutoTestTimeoutException):
     """Thrown when fails to attain distance"""
     pass
 
 
-class WaitLocationTimeout(ErrorException):
+class WaitLocationTimeout(AutoTestTimeoutException):
     """Thrown when fails to attain location"""
     pass
 
 
-class WaitWaypointTimeout(ErrorException):
+class WaitWaypointTimeout(AutoTestTimeoutException):
     """Thrown when fails to attain waypoint ranges"""
     pass
 
 
-class SetRCTimeout(ErrorException):
+class SetRCTimeout(AutoTestTimeoutException):
     """Thrown when fails to send RC commands"""
+    pass
+
+class MsgRcvTimeoutException(AutoTestTimeoutException):
+    """Thrown when fails to receive an expected message"""
+    pass
+
+class NotAchievedException(ErrorException):
+    """Thrown when fails to achieve a goal"""
+    pass
+
+class PreconditionFailedException(ErrorException):
+    """Thrown when a precondition for a test is not met"""
     pass
 
 class AutoTest(ABC):
