@@ -346,6 +346,9 @@ class AutoTestRover(AutoTest):
         self.wait_mode('HOLD')
         self.progress("Mission OK")
 
+    def drive_mission_rover1(self):
+        self.drive_mission(os.path.join(testdir, "rover1.txt"))
+
     def do_get_banner(self):
         self.mavproxy.send("long DO_SEND_BANNER 1\n")
         start = time.time()
@@ -477,13 +480,25 @@ class AutoTestRover(AutoTest):
             raise NotAchievedException()
         self.progress("Pin mask changed after relay command")
 
+    def run_test(self, desc, function):
+        self.progress("#")
+        self.progress("########## %s ##########" % (desc))
+        self.progress("#")
+
+        try:
+            function()
+        except Exception as e:
+            self.progress('FAILED: "%s": %s' % (desc, str(e)))
+            self.fail_list.append( (desc, e) )
+        self.progress('PASSED: "%s"' % desc)
+
     def autotest(self):
         """Autotest APMrover2 in SITL."""
         if not self.hasInit:
             self.init()
         self.progress("Started simulator")
 
-        fail_list = []
+        self.fail_list = []
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s" %
                           self.mav.WIRE_PROTOCOL_VERSION)
@@ -501,89 +516,32 @@ class AutoTestRover(AutoTest):
             self.wait_ready_to_arm()
             self.arm_vehicle()
 
-            self.progress("#")
-            self.progress("########## Drive an RTL mission  ##########")
-            self.progress("#")
+            self.run_test("Drive an RTL Mission", self.drive_rtl_mission)
 
-            try:
-                self.drive_rtl_mission()
-            except Exception as e:
-                self.progress("Failed RTL mission: %s" % (str(e)))
-                fail_list.append("drive_rtl_mission")
+            self.run_test("Learn/Drive Square with Ch7 option",
+                          self.drive_square)
 
-            self.progress("#")
-            self.progress("########## Drive a square and save WPs with CH7"
-                          "switch  ##########")
-            self.progress("#")
-            # Drive a square in learning mode
-            # self.reset_and_arm()
-            try:
-                self.drive_square()
-            except Exception as e:
-                self.progress("Failed drive square: %s" % (str(e)))
-                fail_list.append("drive_square")
+            self.run_test("Drive Mission %s" % "rover1.txt",
+                          self.drive_mission_rover1)
 
-            try:
-                self.drive_mission(os.path.join(testdir, "rover1.txt"))
-            except Exception as e:
-                self.progress("Failed mission:  %s" % (str(e)))
-                fail_list.append("drive_mission")
+            self.run_test("Drive Brake", self.drive_brake)
 
-            try:
-                self.drive_brake()
-            except Exception as e:
-                self.progress("Failed brake:  %s" % (str(e)))
-                fail_list.append("drive_brake")
+            self.run_test("Disarm Vehicle", self.disarm_vehicle)
 
-            try:
-                self.disarm_vehicle()
-            except Exception as e:
-                self.progress("Failed to DISARM: %s" % (str(e)))
-                fail_list.append("disarm_vehicle")
+            self.run_test("Get Banner", self.do_get_banner)
 
-            # do not move this to be the first test.  MAVProxy's dedupe
-            # function may bite you.
-            self.progress("Getting banner")
-            try:
-                self.do_get_banner()
-            except Exception as e:
-                self.progress("FAILED: get banner: %s" % (str(e)))
-                fail_list.append("do_get_banner")
+            self.run_test("Get Capabilities",
+                          self.do_get_autopilot_capabilities)
 
-            self.progress("Getting autopilot capabilities")
-            try:
-                self.do_get_autopilot_capabilities()
-            except Exception as e:
-                self.progress("FAILED: get capabilities: %s" % (str(e)))
-                fail_list.append("do_get_autopilot_capabilities")
+            self.run_test("Set mode via MAV_COMMAND_DO_SET_MODE",
+                          self.do_set_mode_via_command_long)
 
-            self.progress("Setting mode via MAV_COMMAND_DO_SET_MODE")
-            try:
-                self.do_set_mode_via_command_long()
-            except Exception as e:
-                self.progress("FAILED: set mode via command_long: %s" % (str(e)))
-                fail_list.append("do_set_mode_via_command_long")
-
-            # test ServoRelayEvents:
-            self.progress("########## Test ServoRelayEvents ##########")
-            try:
-                self.test_servorelayevents()
-            except Exception as e:
-                self.progress("Failed servo relay events: %s" % (str(e)))
-                fail_list.append("test_servorelayevents")
-
-            # Throttle Failsafe
-            # self.progress("#")
-            # self.progress("########## Test Failsafe ##########")
-            # self.progress("#")
-            # self.reset_and_arm()
-            # if not self.test_throttle_failsafe(HOME, distance_min=4):
-            #     self.progress("Throttle failsafe failed")
-            #     sucess = False
+            self.run_test("Test ServoRelayEvents",
+                          self.test_servorelayevents)
 
             if not self.log_download(self.buildlogs_path("APMrover2-log.bin")):
                 self.progress("Failed log download: %s" % (str(e)))
-                fail_list.append("log_download")
+                self.fail_list.append( ("log_download", None) )
     #        if not drive_left_circuit(self):
     #            self.progress("Failed left circuit")
     #            failed = True
@@ -593,11 +551,11 @@ class AutoTestRover(AutoTest):
 
         except pexpect.TIMEOUT as e:
             self.progress("Failed with timeout")
-            fail_list.append("*timeout*")
+            self.fail_list.append( ("*timeout*", None) )
 
         self.close()
 
-        if len(fail_list):
-            self.progress("FAILED STEPS: %s" % fail_list)
+        if len(self.fail_list):
+            self.progress("FAILED STEPS: %s" % self.fail_list)
             return False
         return True
