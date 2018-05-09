@@ -10,6 +10,10 @@ import time
 
 from common import AutoTest
 
+from common import MsgRcvTimeoutException
+from common import NotAchievedException
+from common import PreconditionFailedException
+
 from pysim import util
 
 from pymavlink import mavutil
@@ -338,11 +342,12 @@ class AutoTestRover(AutoTest):
         self.mavproxy.send('switch 4\n')  # auto mode
         self.set_rc(3, 1500)
         self.wait_mode('AUTO')
-        if not self.wait_waypoint(1, 4, max_dist=5):
-            return False
+        self.wait_waypoint(1, 4, max_dist=5)
         self.wait_mode('HOLD')
         self.progress("Mission OK")
-        return True
+
+    def drive_mission_rover1(self):
+        self.drive_mission(os.path.join(testdir, "rover1.txt"))
 
     def do_get_banner(self):
         self.mavproxy.send("long DO_SEND_BANNER 1\n")
@@ -353,13 +358,12 @@ class AutoTestRover(AutoTest):
                                     timeout=1)
             if m is not None and "ArduRover" in m.text:
                 self.progress("banner received: %s" % m.text)
-                return True
+                return
             if time.time() - start > 10:
                 break
 
         self.progress("banner not received")
-
-        return False
+        raise MsgRcvTimeoutException()
 
     def drive_brake_get_stopping_distance(self, speed):
         # measure our stopping distance:
@@ -421,13 +425,11 @@ class AutoTestRover(AutoTest):
                           (distance_with_brakes,
                            distance_without_brakes,
                            delta))
-            return False
-        else:
-            self.progress(
-                "Brakes work (with=%0.2fm without=%0.2fm delta=%0.2fm)" %
-                (distance_with_brakes, distance_without_brakes, delta))
+            raise NotAchievedException()
 
-        return True
+        self.progress(
+            "Brakes work (with=%0.2fm without=%0.2fm delta=%0.2fm)" %
+            (distance_with_brakes, distance_without_brakes, delta))
 
     def drive_rtl_mission(self):
         mission_filepath = os.path.join(testdir,
@@ -445,12 +447,12 @@ class AutoTestRover(AutoTest):
                                 timeout=0.1)
         if m is None:
             self.progress("Did not receive NAV_CONTROLLER_OUTPUT message")
-            return False
+            raise MsgRcvTimeoutException()
 
         wp_dist_min = 5
         if m.wp_dist < wp_dist_min:
             self.progress("Did not start at least 5 metres from destination")
-            return False
+            raise PreconditionFailedException()
 
         self.progress("NAV_CONTROLLER_OUTPUT.wp_dist looks good (%u >= %u)" %
                       (m.wp_dist, wp_dist_min,))
@@ -463,11 +465,10 @@ class AutoTestRover(AutoTest):
         if home_distance > home_distance_max:
             self.progress("Did not get home (%u metres distant > %u)" %
                           (home_distance, home_distance_max))
-            return False
+            raise NotAchievedException()
         self.mavproxy.send('switch 6\n')
         self.wait_mode('MANUAL')
         self.progress("RTL Mission OK")
-        return True
 
     def test_servorelayevents(self):
         self.mavproxy.send("relay set 0 0\n")
@@ -476,9 +477,20 @@ class AutoTestRover(AutoTest):
         on = self.get_parameter("SIM_PIN_MASK")
         if on == off:
             self.progress("Pin mask unchanged after relay command")
-            return False
+            raise NotAchievedException()
         self.progress("Pin mask changed after relay command")
-        return True
+
+    def run_test(self, desc, function):
+        self.progress("#")
+        self.progress("########## %s ##########" % (desc))
+        self.progress("#")
+
+        try:
+            function()
+        except Exception as e:
+            self.progress('FAILED: "%s": %s' % (desc, str(e)))
+            self.fail_list.append( (desc, e) )
+        self.progress('PASSED: "%s"' % desc)
 
     def autotest(self):
         """Autotest APMrover2 in SITL."""
@@ -486,8 +498,7 @@ class AutoTestRover(AutoTest):
             self.init()
         self.progress("Started simulator")
 
-        failed = False
-        e = 'None'
+        self.fail_list = []
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s" %
                           self.mav.WIRE_PROTOCOL_VERSION)
@@ -503,75 +514,34 @@ class AutoTestRover(AutoTest):
             self.wait_mode('MANUAL')
             self.progress("Waiting reading for arm")
             self.wait_ready_to_arm()
-            if not self.arm_vehicle():
-                self.progress("Failed to ARM")
-                failed = True
+            self.arm_vehicle()
 
-            self.progress("#")
-            self.progress("########## Drive an RTL mission  ##########")
-            self.progress("#")
-            # Drive a square in learning mode
-            # self.reset_and_arm()
-            if not self.drive_rtl_mission():
-                self.progress("Failed RTL mission")
-                failed = True
+            self.run_test("Drive an RTL Mission", self.drive_rtl_mission)
 
-            self.progress("#")
-            self.progress("########## Drive a square and save WPs with CH7"
-                          "switch  ##########")
-            self.progress("#")
-            # Drive a square in learning mode
-            # self.reset_and_arm()
-            if not self.drive_square():
-                self.progress("Failed drive square")
-                failed = True
+            self.run_test("Learn/Drive Square with Ch7 option",
+                          self.drive_square)
 
-            if not self.drive_mission(os.path.join(testdir, "rover1.txt")):
-                self.progress("Failed mission")
-                failed = True
+            self.run_test("Drive Mission %s" % "rover1.txt",
+                          self.drive_mission_rover1)
 
-            if not self.drive_brake():
-                self.progress("Failed brake")
-                failed = True
+            self.run_test("Drive Brake", self.drive_brake)
 
-            if not self.disarm_vehicle():
-                self.progress("Failed to DISARM")
-                failed = True
+            self.run_test("Disarm Vehicle", self.disarm_vehicle)
 
-            # do not move this to be the first test.  MAVProxy's dedupe
-            # function may bite you.
-            self.progress("Getting banner")
-            if not self.do_get_banner():
-                self.progress("FAILED: get banner")
-                failed = True
+            self.run_test("Get Banner", self.do_get_banner)
 
-            self.progress("Getting autopilot capabilities")
-            if not self.do_get_autopilot_capabilities():
-                self.progress("FAILED: get capabilities")
-                failed = True
+            self.run_test("Get Capabilities",
+                          self.do_get_autopilot_capabilities)
 
-            self.progress("Setting mode via MAV_COMMAND_DO_SET_MODE")
-            if not self.do_set_mode_via_command_long():
-                failed = True
+            self.run_test("Set mode via MAV_COMMAND_DO_SET_MODE",
+                          self.do_set_mode_via_command_long)
 
-            # test ServoRelayEvents:
-            self.progress("########## Test ServoRelayEvents ##########")
-            if not self.test_servorelayevents():
-                self.progress("Failed servo relay events")
-                failed = True
-
-            # Throttle Failsafe
-            self.progress("#")
-            self.progress("########## Test Failsafe ##########")
-            self.progress("#")
-            # self.reset_and_arm()
-            # if not self.test_throttle_failsafe(HOME, distance_min=4):
-            #     self.progress("Throttle failsafe failed")
-            #     sucess = False
+            self.run_test("Test ServoRelayEvents",
+                          self.test_servorelayevents)
 
             if not self.log_download(self.buildlogs_path("APMrover2-log.bin")):
-                self.progress("Failed log download")
-                failed = True
+                self.progress("Failed log download: %s" % (str(e)))
+                self.fail_list.append( ("log_download", None) )
     #        if not drive_left_circuit(self):
     #            self.progress("Failed left circuit")
     #            failed = True
@@ -581,11 +551,11 @@ class AutoTestRover(AutoTest):
 
         except pexpect.TIMEOUT as e:
             self.progress("Failed with timeout")
-            failed = True
+            self.fail_list.append( ("*timeout*", None) )
 
         self.close()
 
-        if failed:
-            self.progress("FAILED: %s" % e)
+        if len(self.fail_list):
+            self.progress("FAILED STEPS: %s" % self.fail_list)
             return False
         return True

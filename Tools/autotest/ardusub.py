@@ -9,7 +9,7 @@ from pymavlink import mavutil
 
 from pysim import util
 
-from common import AutoTest
+from common import AutoTest, ErrorException
 
 # get location of scripts
 testdir = os.path.dirname(os.path.realpath(__file__))
@@ -99,64 +99,71 @@ class AutoTestSub(AutoTest):
         self.progress("Ready to start testing!")
 
     def dive_manual(self):
-        self.set_rc(3, 1600)
-        self.set_rc(5, 1600)
-        self.set_rc(6, 1550)
+        try:
+            self.set_rc(3, 1600)
+            self.set_rc(5, 1600)
+            self.set_rc(6, 1550)
 
-        if not self.wait_distance(50, accuracy=7, timeout=200):
+            if not self.wait_distance(50, accuracy=7, timeout=200):
+                return False
+
+            self.set_rc(4, 1550)
+
+            if not self.wait_heading(0):
+                return False
+
+            self.set_rc(4, 1500)
+
+            if not self.wait_distance(50, accuracy=7, timeout=100):
+                return False
+
+            self.set_rc(4, 1550)
+
+            if not self.wait_heading(0):
+                return False
+
+            self.set_rc(4, 1500)
+            self.set_rc(5, 1500)
+            self.set_rc(6, 1100)
+
+            if not self.wait_distance(75, accuracy=7, timeout=100):
+                return False
+
+            self.set_rc_default()
+
+            self.disarm_vehicle()
+            self.progress("Manual dive OK")
+            return True
+        except ErrorException as ex:
+            self.progress("dive_manual failed with %s" % type(ex).__name__)
             return False
-
-        self.set_rc(4, 1550)
-
-        if not self.wait_heading(0):
-            return False
-
-        self.set_rc(4, 1500)
-
-        if not self.wait_distance(50, accuracy=7, timeout=100):
-            return False
-
-        self.set_rc(4, 1550)
-
-        if not self.wait_heading(0):
-            return False
-
-        self.set_rc(4, 1500)
-        self.set_rc(5, 1500)
-        self.set_rc(6, 1100)
-
-        if not self.wait_distance(75, accuracy=7, timeout=100):
-            return False
-
-        self.set_rc_default()
-
-        self.disarm_vehicle()
-        self.progress("Manual dive OK")
-        return True
 
     def dive_mission(self, filename):
+        try:
+            self.progress("Executing mission %s" % filename)
+            self.mavproxy.send('wp load %s\n' % filename)
+            self.mavproxy.expect('Flight plan received')
+            self.mavproxy.send('wp list\n')
+            self.mavproxy.expect('Saved [0-9]+ waypoints')
+            self.set_rc_default()
 
-        self.progress("Executing mission %s" % filename)
-        self.mavproxy.send('wp load %s\n' % filename)
-        self.mavproxy.expect('Flight plan received')
-        self.mavproxy.send('wp list\n')
-        self.mavproxy.expect('Saved [0-9]+ waypoints')
-        self.set_rc_default()
+            if not self.arm_vehicle():
+                self.progress("Failed to ARM")
+                return False
 
-        if not self.arm_vehicle():
-            self.progress("Failed to ARM")
+            self.mavproxy.send('mode auto\n')
+            self.wait_mode('AUTO')
+
+            if not self.wait_waypoint(1, 5, max_dist=5):
+                return False
+
+            self.disarm_vehicle()
+
+            self.progress("Mission OK")
+            return True
+        except ErrorException as ex:
+            self.progress("dive_mission failed with %s" % type(ex).__name__)
             return False
-
-        self.mavproxy.send('mode auto\n')
-        self.wait_mode('AUTO')
-
-        if not self.wait_waypoint(1, 5, max_dist=5):
-            return False
-
-        self.disarm_vehicle()
-
-        self.progress("Mission OK")
-        return True
 
     def autotest(self):
         """Autotest ArduSub in SITL."""
@@ -164,7 +171,7 @@ class AutoTestSub(AutoTest):
             self.init()
 
         failed = False
-        e = 'None'
+        fail_list = []
         try:
             self.progress("Waiting for a heartbeat with mavlink protocol %s"
                           % self.mav.WIRE_PROTOCOL_VERSION)
@@ -181,15 +188,19 @@ class AutoTestSub(AutoTest):
             self.set_rc_default()
             if not self.arm_vehicle():
                 self.progress("Failed to ARM")
+                fail_list.append("arm_vehicle")
                 failed = True
             if not self.dive_manual():
                 self.progress("Failed manual dive")
+                fail_list.append("dive_manual")
                 failed = True
             if not self.dive_mission(os.path.join(testdir, "sub_mission.txt")):
                 self.progress("Failed auto mission")
+                fail_list.append("dive_mission")
                 failed = True
             if not self.log_download(self.buildlogs_path("ArduSub-log.bin")):
                 self.progress("Failed log download")
+                fail_list.append("log_download")
                 failed = True
         except pexpect.TIMEOUT as e:
             self.progress("Failed with timeout")
@@ -198,6 +209,6 @@ class AutoTestSub(AutoTest):
         self.close()
 
         if failed:
-            self.progress("FAILED: %s" % e)
+            self.progress("FAILED: %s" % fail_list)
             return False
         return True
