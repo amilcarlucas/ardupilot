@@ -42,9 +42,9 @@ bool ModeGuided::init(bool ignore_checks)
 {
     // start in position control mode
     pos_control_start();
+    send_notification = false;
     return true;
 }
-
 
 // do_user_takeoff_start - initialises waypoint controller to implement take-off
 bool ModeGuided::do_user_takeoff_start(float final_alt_above_home)
@@ -201,6 +201,9 @@ bool ModeGuided::set_destination(const Vector3f& destination, bool use_yaw, floa
 
     // log target
     copter.Log_Write_GuidedTarget(guided_mode, destination, Vector3f());
+
+    send_notification = true;
+
     return true;
 }
 
@@ -244,6 +247,9 @@ bool ModeGuided::set_destination(const Location& dest_loc, bool use_yaw, float y
 
     // log target
     copter.Log_Write_GuidedTarget(guided_mode, Vector3f(dest_loc.lat, dest_loc.lng, dest_loc.alt),Vector3f());
+
+    send_notification = true;
+
     return true;
 }
 
@@ -345,6 +351,10 @@ void ModeGuided::run()
     case Guided_WP:
         // run position controller
         pos_control_run();
+        if (send_notification && wp_nav->reached_wp_destination()) {
+            send_notification = false;
+            gcs().send_mission_item_reached_message(0);
+        }
         break;
 
     case Guided_Velocity:
@@ -591,7 +601,7 @@ void ModeGuided::angle_control_run()
 
     // wrap yaw request
     float yaw_in = wrap_180_cd(guided_angle_state.yaw_cd);
-    float yaw_rate_in = wrap_180_cd(guided_angle_state.yaw_rate_cds);
+    float yaw_rate_in = guided_angle_state.yaw_rate_cds;
 
     // constrain climb rate
     float climb_rate_cms = constrain_float(guided_angle_state.climb_rate_cms, -fabsf(wp_nav->get_default_speed_down()), wp_nav->get_default_speed_up());

@@ -615,6 +615,8 @@ void GCS_MAVLINK::handle_radio_status(const mavlink_message_t &msg, bool log_rad
         last_radio_status_remrssi_ms = AP_HAL::millis();
     }
 
+    last_txbuf = packet.txbuf;
+
     // use the state of the transmit buffer in the radio to
     // control the stream rate, giving us adaptive software
     // flow control
@@ -4523,6 +4525,13 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
                 default:
                     break;
             }
+        }
+#endif
+#ifdef HAL_AP_FETTECONEWIRE_ENABLED
+        CHECK_PAYLOAD_SIZE(ESC_TELEMETRY_1_TO_4);
+        AP_FETtecOneWire *fetteconewire = AP_FETtecOneWire::get_singleton();
+        if (fetteconewire) {
+            fetteconewire->send_esc_telemetry_mavlink(uint8_t(chan));
         }
 #endif
         break;
