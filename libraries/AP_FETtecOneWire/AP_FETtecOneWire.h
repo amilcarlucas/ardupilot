@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <AP_ESC_Telem/AP_ESC_Telem_Backend.h>
 #include <AP_HAL/AP_HAL.h>
 #include <SRV_Channel/SRV_Channel.h>
 
@@ -30,7 +31,7 @@
 
 
 
-class AP_FETtecOneWire {
+class AP_FETtecOneWire : public AP_ESC_Telem_Backend {
 public:
     AP_FETtecOneWire();
 
@@ -45,6 +46,27 @@ public:
     static AP_FETtecOneWire *get_singleton() {
         return _singleton;
     }
+
+    // AP_ESC_Telem_Backend API
+
+    // number of active ESCs
+    uint8_t get_num_motors(void) const override;
+
+    /// return total usage time in seconds if available, returns true on success
+    bool get_usage_seconds(uint8_t esc_id, uint32_t& usage_sec) const override;
+
+    /// get an individual ESC's temperature in degrees if available, returns true on success
+    bool get_temperature(uint8_t esc_id, int16_t& temp) const override;
+
+    /// get an individual ESC's rpm if available, returns true on success
+    bool get_rpm(uint8_t esc_id, uint16_t& rpm) const override;
+
+    /// get an individual ESC's current in centi-amps if available, returns true on success
+    bool get_current_ca(uint8_t esc_id, uint16_t& amps_ca) const override;
+
+    /// return last_update_time_ms if we have received any telemetry data
+    uint32_t have_telem_data(uint8_t esc_id) const override;
+
 private:
     void init();
     static AP_FETtecOneWire *_singleton;
@@ -57,14 +79,15 @@ private:
     static constexpr uint32_t DELAY_TIME_US = 700;
     static constexpr uint8_t MOTOR_COUNT_MAX = 12; /// OneWire supports up-to 25 ESCs, but Ardupilot only supports 12
     int8_t _telem_avail = -1;
-    /// contains 6 fields per ESC:
+    /// contains 7 fields per ESC:
     ///  - _telemetry[i][0] -> temperature[idx]
     ///  - _telemetry[i][1] -> voltage[idx]
     ///  - _telemetry[i][2] -> current[idx]
     ///  - _telemetry[i][3] -> rpm[idx]
     ///  - _telemetry[i][4] -> totalcurrent[idx]
     ///  - _telemetry[i][5] -> count[idx]
-    uint16_t _telemetry[MOTOR_COUNT_MAX][6] = {0};
+    ///  - _telemetry[i][6] -> last_update_time_ms[idx]
+    uint16_t _telemetry[MOTOR_COUNT_MAX][7] = {0};
     uint16_t _motorpwm[MOTOR_COUNT_MAX] = {1000};
     uint8_t _telem_req_type; /// the requested telemetry type (telem_type::XXXXX)
 

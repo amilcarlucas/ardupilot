@@ -187,15 +187,19 @@ void AP_FETtecOneWire::update()
     }
 
     if (_telem_avail != -1) {
+        const uint32_t now = AP_HAL::millis();
         // TODO: take the _telem_semaphore here
         for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
             _telemetry[i][_telem_avail] = requestedTelemetry[i];
+            if (_telem_avail == telem_type::ERPM) {
+                update_rpm(i, requestedTelemetry[i])
+            }
             _telemetry[i][5]++;
+            _telemetry[i][6] = now;
         }
         // TODO: give back the _telem_semaphore here
 
         AP_Logger *logger = AP_Logger::get_singleton();
-        const uint32_t now = AP_HAL::millis();
         // log at 10Hz
         if (logger && logger->logging_enabled() && now - _last_log_ms > 100) {
             for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
@@ -253,6 +257,61 @@ void AP_FETtecOneWire::send_esc_telemetry_mavlink(uint8_t mav_chan) const
             }
         }
     }
+}
+
+/// return number of motors present
+uint8_t AP_FETtecOneWire::get_num_motors() const {
+    uint8_t nmotors = 0;
+    uint16_t mask = uint16_t(motor_mask.get());
+    while (mask) {
+        nmotors += mask & 1;
+        mask >>= 1;
+    }
+    return nmotors;
+}
+
+bool AP_FETtecOneWire::get_usage_seconds(uint8_t esc_id, uint32_t& usage_secs) const
+{
+    return false;  // Not implemented by FETtecOneWire protocol
+}
+
+/// get an individual ESC's temperature in degrees if available, returns true on success
+bool AP_FETtecOneWire::get_temperature(uint8_t esc_id, int16_t& temp) const
+{
+    if (esc_id >= MOTOR_COUNT_MAX || _telemetry[esc_id][6] == 0) {
+        return false;
+    }
+    temp = _telemetry[esc_id][telem_type::TEMP];
+    return true;
+}
+
+/// get an individual ESC's rpm if available, returns true on success
+bool AP_FETtecOneWire::get_rpm(uint8_t esc_id, uint16_t& rpm) const
+{
+    if (esc_id >= MOTOR_COUNT_MAX || _telemetry[esc_id][6] == 0) {
+        return false;
+    }
+    rpm = _telemetry[esc_id][telem_type::ERPM];
+    return true;
+}
+
+/// get an individual ESC's current [cA] if available, returns true on success
+bool AP_FETtecOneWire::get_current_ca(uint8_t esc_id, uint16_t& amps_ca) const
+{
+    if (esc_id >= MOTOR_COUNT_MAX || _telemetry[esc_id][6] == 0) {
+        return false;
+    }
+    amps_ca = _telemetry[esc_id][telem_type::CURRENT];
+    return true;
+}
+
+/// return last_update_time_ms if we have received any telemetry data
+uint32_t AP_FETtecOneWire::have_telem_data(uint8_t esc_id) const
+{
+    if (esc_id >= MOTOR_COUNT_MAX) {
+        return 0;
+    }
+	return _telemetry[esc_id][6];
 }
 
 /**
