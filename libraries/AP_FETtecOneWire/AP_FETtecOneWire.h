@@ -56,6 +56,8 @@ private:
     static AP_FETtecOneWire *_singleton;
     bool _initialised;
     AP_HAL::UARTDriver *_uart;
+    bool _use_hdplex; // use asynchronous half-duplex serial communication
+    
     AP_Int32 motor_mask;
     AP_Int8 pole_count;
 
