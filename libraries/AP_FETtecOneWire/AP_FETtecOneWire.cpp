@@ -667,6 +667,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
             t.consumption_mah = float((telem[5+7]<<8)|telem[5+8]);
             tx_err_count = (telem[5+9]<<8)|telem[5+10];
         }
+        if (ret == receive_response::CRC_MISSMATCH) {
+            increment_CRC_error_counter(_requested_telemetry_from_esc-1);
+        }
     }
     return ret;
 }
