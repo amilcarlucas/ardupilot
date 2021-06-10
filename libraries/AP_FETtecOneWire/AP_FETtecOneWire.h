@@ -196,7 +196,7 @@ int8_t decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16
     uint8_t _pull_busy;
     uint8_t _tlm_request;
     uint8_t _last_crc;
-
+    uint32_t _lastESCScan;
     enum msg_type
     {
       OW_OK,

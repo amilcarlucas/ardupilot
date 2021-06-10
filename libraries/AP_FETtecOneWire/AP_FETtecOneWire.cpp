@@ -19,6 +19,7 @@
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
+#include <AP_Arming/AP_Arming.h>
 
 #include "AP_FETtecOneWire.h"
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
@@ -115,9 +116,27 @@ void AP_FETtecOneWire::update()
         if (c == nullptr) {
             break;
         }
-        nr_escs++;
+        nr_escs++; //Unused?
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 0, 2000);
     }
+
+    //TLM recovery, if e.g. a power loss occured but FC is still powered by USB.
+      nr_escs = 0; //Use it for counting ESCs from FTW MASK
+      if (!AP::arming().is_armed()) {
+        while (mask&(1<<nr_escs)){
+            nr_escs++;
+        }
+
+        AP_ESC_Telem& telem = AP::esc_telem();
+          if (telem.get_num_active_escs()<nr_escs && (AP_HAL::millis()-lastESCScan)>5000){ //Scan timeout fix here?
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs",telem.get_num_active_escs(),nr_escs);
+            _lastESCScan = AP_HAL::millis();
+            _scan_active =0;
+            _setup_active =0;
+            _set_full_telemetry_active =0;
+          }
+      }
+
 
 #if HAL_WITH_ESC_TELEM
     // receive and decode the telemetry data from one ESC
@@ -407,10 +426,9 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
                 _set_full_telemetry_retry_count=0; //Reset retry count for new ESC ID
             } else {
                 _set_full_telemetry_retry_count++; //No OK received, increase retry count
-                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW Fail, retry Count %i", _set_full_telemetry_retry_count);
             }
         } else {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "PullCommand Fail %i", pull_response);
+
             _set_full_telemetry_retry_count++;
             if (_set_full_telemetry_retry_count>128) { //It is important to have the correct telemetry set so start over if there is something wrong.
                 _pull_busy=0;
