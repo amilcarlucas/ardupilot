@@ -80,16 +80,7 @@ void AP_FETtecOneWire::init()
         _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
         _uart->set_unbuffered_writes(true);
         _uart->set_blocking_writes(false);
-        
-        if (_uart->get_options() & _uart->OPTION_HDPLEX) { //Half-Duplex is enabled
-            _use_hdplex = true;
-            _uart->begin(2000000);
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Half-Duplex");
-        } else {
-            _uart->begin(500000);
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Full-Duplex");
-        }
-
+        _uart->begin(500000);
     }
 }
 
@@ -209,9 +200,6 @@ void AP_FETtecOneWire::transmit(uint8_t esc_id, uint8_t* bytes, uint8_t length)
     }
     transmit_arr[length + 5] = get_crc8(transmit_arr, length + 5); // crc
     _uart->write_locked(transmit_arr, length + 6,FTOW_UART_LOCK_KEY);
-    if (_use_hdplex) {
-        _ignore_own_bytes += length + 6;
-    }
 }
 
 /**
@@ -232,14 +220,6 @@ uint8_t AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type re
     byte 6 - X = answer type, followed by the payload
     byte X+1 = 8bit CRC
     */
-
-    //ignore own bytes
-    if (_use_hdplex) {
-        while (_ignore_own_bytes > 0 && _uart->available()) {
-            _ignore_own_bytes--;
-            _uart->read();
-        }
-    }
 
     // look for the real answerOW_SET_TLM_TYPE
     if (_uart->available() >= length + 6u) {
@@ -725,10 +705,6 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
                     fast_throttle_command, _fast_throttle_byte_count - 1);
             _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count,FTOW_UART_LOCK_KEY);
             // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
-            if (_use_hdplex) {
-                _ignore_own_bytes = _fast_throttle_byte_count - 1;
-            }
-
             _last_crc = fast_throttle_command[_fast_throttle_byte_count - 1];
             // the ESCs will answer the TLM as 16bit each ESC, so 2byte each ESC. @torsten: is this comment correct?
         }
