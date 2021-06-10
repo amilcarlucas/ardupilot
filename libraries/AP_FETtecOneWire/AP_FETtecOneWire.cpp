@@ -108,7 +108,6 @@ void AP_FETtecOneWire::update()
     SRV_Channels::set_digital_outputs(mask, 0);
 
     // get ESC set points, stop as soon as there is a gap
-    uint8_t nr_escs = 0;
     uint16_t motor_pwm[MOTOR_COUNT_MAX] = {1000};
 
     for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
@@ -116,29 +115,31 @@ void AP_FETtecOneWire::update()
         if (c == nullptr) {
             break;
         }
-        nr_escs++; //Unused?
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 0, 2000);
     }
 
-    //TLM recovery, if e.g. a power loss occured but FC is still powered by USB.
-      nr_escs = 0; //Use it for counting ESCs from FTW MASK
-      if (!AP::arming().is_armed()) {
-        while (mask&(1<<nr_escs)){
+#if HAL_WITH_ESC_TELEM
+    // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
+    if (!AP::arming().is_armed()) {
+        uint8_t nr_escs = 0;
+        while (mask & (1<<nr_escs)) {
             nr_escs++;
         }
 
-        AP_ESC_Telem& telem = AP::esc_telem();
-          if (telem.get_num_active_escs()<nr_escs && (AP_HAL::millis()-lastESCScan)>5000){ //Scan timeout fix here?
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs",telem.get_num_active_escs(),nr_escs);
-            _lastESCScan = AP_HAL::millis();
-            _scan_active =0;
-            _setup_active =0;
-            _set_full_telemetry_active =0;
-          }
-      }
+        const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
+        if (num_active_escs < nr_escs) {
+            const uint32_t now = AP_HAL::millis();
+            if ((now-_lastESCScan) > 5000) { //Scan timeout fix here?
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, nr_escs);
+                _lastESCScan = now;
+                _scan_active = 0;
+                _setup_active = 0;
+                _set_full_telemetry_active = 0;
+            }
+        }
+    }
 
 
-#if HAL_WITH_ESC_TELEM
     // receive and decode the telemetry data from one ESC
     // but do not process it any further to reduce timing jitter in the escs_set_values() function call
     TelemetryData t {};
