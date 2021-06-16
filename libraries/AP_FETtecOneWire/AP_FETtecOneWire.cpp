@@ -82,6 +82,7 @@ void AP_FETtecOneWire::init()
         _uart->set_unbuffered_writes(true);
         _uart->set_blocking_writes(false);
         _uart->begin(500000);
+        _initialised = true;
     }
 }
 
@@ -90,7 +91,6 @@ void AP_FETtecOneWire::update()
 {
 
     if (!_initialised) {
-        _initialised = true;
         init();
         _last_send_us = AP_HAL::micros();
         return;
@@ -100,32 +100,35 @@ void AP_FETtecOneWire::update()
         return;
     }
 
-    if (!_uart->is_dma_enabled()) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
+    if (_update_loop_decimator-- == 0) {
+        if (!_uart->is_dma_enabled()) {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
+        }
+        // tell SRV_Channels about ESC capabilities
+        _mask = uint16_t(motor_mask.get());
+        SRV_Channels::set_digital_outputs(_mask, 0);
+
+        _update_loop_decimator = 800; // once every 2 seconds
     }
-    // tell SRV_Channels about ESC capabilities
-    const uint16_t mask = uint16_t(motor_mask.get());
-    SRV_Channels::set_digital_outputs(mask, 0);
 
     // get ESC set points, stop as soon as there is a gap
-    uint16_t motor_pwm[MOTOR_COUNT_MAX] = {1000};
+    uint16_t motor_pwm[MOTOR_COUNT_MAX];
+    uint16_t smask = _mask;
+    uint8_t nr_escs = 0;
 
     for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
         SRV_Channel* c = SRV_Channels::srv_channel(i);
-        if (c == nullptr) {
+        if (c == nullptr || (smask & 0x01) == 0x00) {
             break;
         }
-        motor_pwm[i] = constrain_int16(c->get_output_pwm(), 0, 2000);
+        motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
+        smask >>= 1;
+        nr_escs++;
     }
 
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
     if (!AP::arming().is_armed()) {
-        uint8_t nr_escs = 0;
-        while (mask & (1<<nr_escs)) {
-            nr_escs++;
-        }
-
         const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
         if (num_active_escs < nr_escs) {
             const uint32_t now = AP_HAL::millis();
@@ -145,7 +148,7 @@ void AP_FETtecOneWire::update()
     TelemetryData t {};
     int16_t centi_erpm;
     uint16_t tx_err_count;
-    uint8_t tlm_ok = 0; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
+    receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
     uint8_t tlm_from_id = 0;
     if (_requested_telemetry_from_esc) {
         tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
@@ -166,13 +169,13 @@ void AP_FETtecOneWire::update()
 #if HAL_WITH_ESC_TELEM
     // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
 
-    calc_tx_crc_error_perc(0, 0, 1); //Just incrementing package count for every ESC. ID does not matter if increment only is set.
+    inc_send_msg_count(); // increment package count for every ESC
 
-    if (_requested_telemetry_from_esc && tlm_ok==1) { //only use telemetry if it is ok.
+    if (_requested_telemetry_from_esc && tlm_ok==receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
         if (pole_count < 2) { // If Parameter is invalid use 14 Poles
             pole_count = 14;
         }
-        const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count, 0);
+        const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
         update_rpm(tlm_from_id-1, centi_erpm*100*2/pole_count.get(), tx_err_rate);
 
         update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
@@ -200,8 +203,9 @@ uint8_t AP_FETtecOneWire::get_crc8(uint8_t* buf, uint16_t buf_len) const
     transmits a FETtec OneWire frame to an ESC
     @param esc_id id of the ESC
     @param bytes 8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
-    @param length length of the bytes array
+    @param length length of the bytes array (max 4)
 */
+#define MAX_TRANSMIT_LENGTH 4
 void AP_FETtecOneWire::transmit(uint8_t esc_id, uint8_t* bytes, uint8_t length)
 {
     /*
@@ -213,23 +217,26 @@ void AP_FETtecOneWire::transmit(uint8_t esc_id, uint8_t* bytes, uint8_t length)
     byte 6 - X = request type, followed by the payload
     byte X+1 = 8bit CRC
     */
-    uint8_t transmit_arr[256] = {0x01, esc_id, 0x00, 0x00};
+    uint8_t transmit_arr[6+MAX_TRANSMIT_LENGTH] = {0x01, esc_id};
+    if (length > MAX_TRANSMIT_LENGTH) {
+        length = MAX_TRANSMIT_LENGTH;
+    }
     transmit_arr[4] = length + 6;
     for (uint8_t i = 0; i < length; i++) {
         transmit_arr[i + 5] = bytes[i];
     }
     transmit_arr[length + 5] = get_crc8(transmit_arr, length + 5); // crc
-    _uart->write_locked(transmit_arr, length + 6,FTOW_UART_LOCK_KEY);
+    _uart->write_locked(transmit_arr, length + 6, FTOW_UART_LOCK_KEY);
 }
 
 /**
     reads the FETtec OneWire answer frame of an ESC
     @param bytes 8 bit byte array, where the received answer gets stored in
     @param length the expected answer length
-    @param return_full_frame can be OW_RETURN_RESPONSE or OW_RETURN_FULL_FRAME
+    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
 */
-uint8_t AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type return_full_frame)
+AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type return_full_frame)
 {
     /*
     a frame looks like:
@@ -258,7 +265,7 @@ uint8_t AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type re
             }
             // check CRC
             if (get_crc8(receive_buf, length + 5) == receive_buf[length + 5]) {
-                if (return_full_frame == OW_RETURN_RESPONSE) {
+                if (return_full_frame == return_type::RESPONSE) {
                     for (uint8_t i = 0; i < length; i++) {
                         bytes[i] = receive_buf[5 + i];
                     }
@@ -267,15 +274,15 @@ uint8_t AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type re
                         bytes[i] = receive_buf[i];
                     }
                 }
-                return 1; //correct CRC
+                return receive_response::ANSWER_VALID;
             } else {
-                return 2; // crc missmatch
+                return receive_response::CRC_MISSMATCH;
             } 
         } else {
-            return 0; // no answer yet
+            return receive_response::NO_ANSWER_YET;
         } 
     } else {
-        return 0; // no answer yet
+        return receive_response::NO_ANSWER_YET;
     }
 }
 
@@ -293,7 +300,7 @@ void AP_FETtecOneWire::pull_reset()
     @param esc_id  id of the ESC
     @param command 8bit array containing the command that should be send including the possible payload
     @param response 8bit array where the response will be stored in
-    @param return_full_frame can be OW_RETURN_RESPONSE or OW_RETURN_FULL_FRAME
+    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @return true if the request is completed, false if dont
 */
 bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* response,
@@ -304,9 +311,9 @@ bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* r
         _pull_success = false;
         transmit(esc_id, command, _request_length[command[0]]);
     } else {
-        uint8_t recv_ret = receive(response, _response_length[command[0]], return_full_frame);
+        receive_response recv_ret = receive(response, _response_length[command[0]], return_full_frame);
         switch (recv_ret) {
-            case 1:
+            case receive_response::ANSWER_VALID:
                 _pull_success = true;
                 _pull_busy = 0;
                 break;
@@ -347,7 +354,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
     if (_ss.scan_timeout < 15) {
         switch (_ss.scan_state) {
         case 0:request[0] = OW_OK;
-            if (pull_command(_ss.scan_id, request, response, OW_RETURN_FULL_FRAME)) {
+            if (pull_command(_ss.scan_id, request, response, return_type::FULL_FRAME)) {
                 _ss.scan_timeout = 0;
                 _active_esc_ids[_ss.scan_id] = 1;
                 _found_escs_count++;
@@ -363,7 +370,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             }
             break;
         case 1:request[0] = OW_REQ_TYPE;
-            if (pull_command(_ss.scan_id, request, response, OW_RETURN_RESPONSE)) {
+            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
                 _ss.scan_timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 _found_escs[_ss.scanID].esc_type = response[0];
@@ -375,7 +382,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             }
             break;
         case 2:request[0] = OW_REQ_SW_VER;
-            if (pull_command(_ss.scan_id, request, response, OW_RETURN_RESPONSE)) {
+            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
                 _ss.scan_timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 _found_escs[_ss.scanID].firmware_version = response[0];
@@ -388,7 +395,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             }
             break;
         case 3:request[0] = OW_REQ_SN;
-            if (pull_command(_ss.scan_id, request, response, OW_RETURN_RESPONSE)) {
+            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
                 _ss.scan_timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 for (uint8_t i = 0; i < 12; i++) {
@@ -420,7 +427,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
         uint8_t request[2] = {0};
         request[0] = OW_SET_TLM_TYPE;
         request[1] = active; //Alternative Tlm => 1, normal TLM => 0
-        bool pull_response = pull_command(_set_full_telemetry_active, request, response, OW_RETURN_RESPONSE);
+        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE);
         if (pull_response) {
             if(response[0] == OW_OK) {//Ok received or max retries reached.
                 _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
@@ -531,7 +538,7 @@ uint8_t AP_FETtecOneWire::init_escs()
                 _is.state = 1;
                 break;
             case 1:request[0] = OW_OK;
-                if (pull_command(_is.active_id, request, response, OW_RETURN_FULL_FRAME)) {
+                if (pull_command(_is.active_id, request, response, return_type::FULL_FRAME)) {
                     _is.timeout = 0;
                     if (response[0] == 0x02) {
                         _found_escs[_is.active_id].in_boot_loader = 1;
@@ -547,7 +554,7 @@ uint8_t AP_FETtecOneWire::init_escs()
                 break;
             }
         } else {
-            if (pull_command(_is.active_id, _is.set_fast_command, response, OW_RETURN_RESPONSE)) {
+            if (pull_command(_is.active_id, _is.set_fast_command, response, return_type::RESPONSE)) {
                 _is.timeout = 0;
                 _is.delay_loops = 1;
                 return _is.active_id + 1;
@@ -562,33 +569,35 @@ uint8_t AP_FETtecOneWire::init_escs()
     return _is.active_id;
 }
 
+
+/**
+    increment package count for every ESC
+*/
+void AP_FETtecOneWire::inc_send_msg_count()
+{
+    _send_msg_count++;
+    if (_send_msg_count > 1600) { // The update loop runs at 400Hz, hence this resets every second
+        _send_msg_count = 0; //reset the counter
+        for (int i=0; i<_found_escs_count; i++) {
+                _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
+        }
+    }
+}
+
 /**
     calculates crc tx error rate for incoming packages. It converts the CRC error counts into percentage
     @param esc_id id of ESC, that the error is calculated for
     @param current_error_count the error count given by the esc
-    @param increment_only if this is set to 1 it only increases the message count and returns 0. If set to 0 it does not increment but gives back the error count.
     @return the error in percent
 */
-float AP_FETtecOneWire::calc_tx_crc_error_perc(uint8_t esc_id, uint16_t current_error_count, uint8_t increment_only)
+float AP_FETtecOneWire::calc_tx_crc_error_perc(uint8_t esc_id, uint16_t current_error_count)
 {
-    float error_count_percentage = 0.0f;
     #define HZ_MOTOR 400.0f
     #define PERCENTAGE_DIVIDER (100.0f/HZ_MOTOR) //to save the division in loop, precalculate by the motor loops 100%/400Hz
 
-    if (increment_only) {
-        _send_msg_count++;
-        if (_send_msg_count > 1600) { // The update loop runs at 400Hz, hence this resets every second
-            _send_msg_count = 0; //reset the counter
-            for (int i=0; i<_found_escs_count; i++) {
-                    _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
-            }
-        }
-    } else { //Calculate the percentage
-        _error_count[esc_id] = current_error_count; //Save the error count to the esc
-        uint16_t corrected_error_count = (uint16_t)((uint16_t)_error_count[esc_id] - (uint16_t)_error_count_since_overflow[esc_id]); //calculates error difference since last overflow.
-        error_count_percentage = (float)corrected_error_count*(float)PERCENTAGE_DIVIDER; //calculates percentage
-    }
-    return error_count_percentage;
+    _error_count[esc_id] = current_error_count; //Save the error count to the esc
+    uint16_t corrected_error_count = (uint16_t)((uint16_t)_error_count[esc_id] - (uint16_t)_error_count_since_overflow[esc_id]); //calculates error difference since last overflow.
+    return (float)corrected_error_count*(float)PERCENTAGE_DIVIDER; //calculates percentage
 }
 
 #if HAL_WITH_ESC_TELEM
@@ -600,14 +609,14 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(uint8_t esc_id, uint16_t current_
     @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
     @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
 */
-int8_t AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id)
+AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id)
 {
-    int8_t ret = 0;
+    receive_response ret = receive_response::NO_ANSWER_YET;
     if (_id_count > 0) {
-        uint8_t telem[17] = {0};
-        ret = receive((uint8_t *) telem, 11, OW_RETURN_FULL_FRAME); 
+        uint8_t telem[17];
+        ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME); 
 
-        if (ret == 1) { //Answer ok
+        if (ret == receive_response::ANSWER_VALID) {
             tlm_from_id = (uint8_t)telem[1];
 
             t.temperature_cdeg = int16_t(telem[5+0] * 100);
@@ -618,7 +627,7 @@ int8_t AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& 
             tx_err_count = (telem[5+9]<<8)|telem[5+10];
         }
     } else {
-        ret = -1;
+        ret = receive_response::NO_ANSWER_YET;
     }
     return ret;
 }
@@ -722,7 +731,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
             // send throttle signal
             fast_throttle_command[_fast_throttle_byte_count - 1] = get_crc8(
                     fast_throttle_command, _fast_throttle_byte_count - 1);
-            _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count,FTOW_UART_LOCK_KEY);
+            _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
             // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
             _last_crc = fast_throttle_command[_fast_throttle_byte_count - 1];
             // the ESCs will answer the TLM as 16bit each ESC, so 2byte each ESC. @torsten: is this comment correct?

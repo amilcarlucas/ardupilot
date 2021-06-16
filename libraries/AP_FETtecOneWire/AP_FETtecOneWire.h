@@ -68,20 +68,31 @@ private:
 #endif
     uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
 
-    enum return_type
+    enum class return_type : uint8_t
     {
-      OW_RETURN_RESPONSE,
-      OW_RETURN_FULL_FRAME
+      RESPONSE,
+      FULL_FRAME
     };
+
+    enum class receive_response : uint8_t
+    {
+        NO_ANSWER_YET,
+        ANSWER_VALID,
+        CRC_MISSMATCH
+    };
+
+/**
+    increment package count for every ESC
+*/
+void inc_send_msg_count();
 
 /**
     calculates crc tx error rate for incoming packages. It converts the CRC error counts into percentage
     @param esc_id id of ESC, that the error is calculated for
     @param esc_error_count the error count given by the esc
-    @param increment_only if this is set to 1 it only increases the message count and returns 0. If set to 1 it does not increment but gives back the error count.
     @return the error in percent
 */
-float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count, uint8_t increment_only);
+float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count);
 
 /**
     generates used 8 bit CRC for arrays
@@ -103,10 +114,10 @@ float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count, uint8_t i
     reads the FETtec OneWire answer frame of an ESC
     @param bytes 8 bit byte array, where the received answer gets stored in
     @param length the expected answer length
-    @param return_full_frame can be OW_RETURN_RESPONSE or OW_RETURN_FULL_FRAME
+    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
 */
-    uint8_t receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
+    receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
 
 /**
     Resets a pending pull request
@@ -118,7 +129,7 @@ float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count, uint8_t i
     @param esc_id id of the ESC
     @param command 8bit array containing the command that should be send including the possible payload
     @param response 8bit array where the response will be stored in
-    @param return_full_frame can be OW_RETURN_RESPONSE or OW_RETURN_FULL_FRAME
+    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @return true if the request is completed, false if dont
 */
     bool pull_command(uint8_t esc_id, uint8_t *command, uint8_t *response, return_type return_full_frame);
@@ -151,7 +162,7 @@ float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count, uint8_t i
     @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
     @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
 */
-int8_t decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id);
+receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id);
 #endif
 
 /**
@@ -178,7 +189,9 @@ int8_t decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16
     uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
     uint16_t _send_msg_count; //counts the messages that are send by fc
- 
+    uint16_t _update_loop_decimator;
+    uint16_t _mask;
+
     uint8_t _active_esc_ids[MOTOR_COUNT_MAX] = {0};
     FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
     uint8_t _found_escs_count;
