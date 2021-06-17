@@ -57,6 +57,11 @@ AP_FETtecOneWire *AP_FETtecOneWire::_singleton;
 
 AP_FETtecOneWire::AP_FETtecOneWire()
 {
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+    if (_singleton != nullptr) {
+        AP_HAL::panic("AP_FETtecOneWire must be singleton");
+    }
+#endif
     _singleton = this;
 
     _response_length[OW_OK] = 1;
@@ -152,7 +157,6 @@ void AP_FETtecOneWire::update()
 
     if (!_initialised) {
         init();
-        return;
     }
 
     if (_uart == nullptr) {
@@ -656,8 +660,6 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
             t.consumption_mah = float((telem[5+7]<<8)|telem[5+8]);
             tx_err_count = (telem[5+9]<<8)|telem[5+10];
         }
-    } else {
-        ret = receive_response::NO_ANSWER_YET;
     }
     return ret;
 }
@@ -754,9 +756,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
                 }
             }
             // empty buffer
-            while (_uart->available()) {
-                _uart->read();
-            }
+            _uart->discard_input();
 
             // send throttle signal
             fast_throttle_command[_fast_throttle_byte_count - 1] = get_crc8(
