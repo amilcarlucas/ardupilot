@@ -71,14 +71,6 @@ AP_FETtecOneWire::AP_FETtecOneWire()
     _response_length[OW_REQ_SW_VER] = 2;
     _response_length[OW_SET_FAST_COM_LENGTH] = 1;
     _response_length[OW_SET_TLM_TYPE] = 1;
-
-    _request_length[OW_OK] = 1;
-    _request_length[OW_BL_START_FW] = 1;       // BL only
-    _request_length[OW_REQ_TYPE] = 1;
-    _request_length[OW_REQ_SN] = 1;
-    _request_length[OW_REQ_SW_VER] = 1;
-    _request_length[OW_SET_FAST_COM_LENGTH] = 4;
-    _request_length[OW_SET_TLM_TYPE] = 2;
 }
 
 /**
@@ -339,15 +331,16 @@ void AP_FETtecOneWire::pull_reset()
     @param command 8bit array containing the command that should be send including the possible payload
     @param response 8bit array where the response will be stored in
     @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+    @param req_len transmit request length
     @return true if the request is completed, false if dont
 */
 bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command, uint8_t* response,
-        return_type return_full_frame)
+        return_type return_full_frame, const uint8_t req_len)
 {
     if (!_pull_busy) {
         _pull_busy = true;
         _pull_success = false;
-        transmit(esc_id, command, _request_length[command[0]]);
+        transmit(esc_id, command, req_len);
     } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
         _pull_busy = false;
         _pull_success = true;
@@ -386,7 +379,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
         switch (_scan.state) {
         case 0:
             request[0] = OW_OK;
-            if (pull_command(_scan.id, request, response, return_type::FULL_FRAME)) {
+            if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
                 _scan.timeout = 0;
                 _active_esc_ids[_scan.id] = 1;
                 _found_escs_count++;
@@ -403,7 +396,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             break;
         case 1:
             request[0] = OW_REQ_TYPE;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
                 _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 _found_escs[_scan.scanID].esc_type = response[0];
@@ -416,7 +409,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             break;
         case 2:
             request[0] = OW_REQ_SW_VER;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
                 _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 _found_escs[_scan.scanID].firmware_version = response[0];
@@ -430,7 +423,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             break;
         case 3:
             request[0] = OW_REQ_SN;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
                 _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 for (uint8_t i = 0; i < 12; i++) {
@@ -462,7 +455,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
         uint8_t request[2];
         request[0] = OW_SET_TLM_TYPE;
         request[1] = active; //Alternative Tlm => 1, normal TLM => 0
-        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE);
+        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE, 2);
         if (pull_response) {
             if(response[0] == OW_OK) {//Ok received or max retries reached.
                 _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
@@ -566,7 +559,7 @@ uint8_t AP_FETtecOneWire::init_escs()
             case 0:
                 request[0] = OW_BL_START_FW;
                 if (_found_escs[_init.active_id].in_boot_loader == 1) {
-                    transmit(_init.active_id, request, _request_length[request[0]]);
+                    transmit(_init.active_id, request, 1);
                     _init.delay_loops = 5;
                 } else {
                     return _init.active_id + 1;
@@ -575,7 +568,7 @@ uint8_t AP_FETtecOneWire::init_escs()
                 break;
             case 1:
                 request[0] = OW_OK;
-                if (pull_command(_init.active_id, request, response, return_type::FULL_FRAME)) {
+                if (pull_command(_init.active_id, request, response, return_type::FULL_FRAME, 1)) {
                     _init.timeout = 0;
                     if (response[0] == 0x02) {
                         _found_escs[_init.active_id].in_boot_loader = 1;
@@ -591,7 +584,7 @@ uint8_t AP_FETtecOneWire::init_escs()
                 break;
             }
         } else {
-            if (pull_command(_init.active_id, _init.set_fast_command, response, return_type::RESPONSE)) {
+            if (pull_command(_init.active_id, _init.set_fast_command, response, return_type::RESPONSE, 4)) {
                 _init.timeout = 0;
                 _init.delay_loops = 1;
                 return _init.active_id + 1;

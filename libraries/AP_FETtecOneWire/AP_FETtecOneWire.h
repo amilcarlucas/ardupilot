@@ -139,9 +139,10 @@ private:
         @param command 8bit array containing the command that should be send including the possible payload
         @param response 8bit array where the response will be stored in
         @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+        @param req_len transmit request length
         @return true if the request is completed, false if dont
     */
-    bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame);
+    bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame, const uint8_t req_len);
 
     /**
         scans for ESCs in bus. should be called until _scan_active >= MOTOR_COUNT_MAX
@@ -271,7 +272,6 @@ private:
     } _init;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; // OW_SET_LED_TMP_COLOR is ignored here
-    uint8_t _request_length[OW_SET_TLM_TYPE+1];  // OW_SET_LED_TMP_COLOR is ignored here
 
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED
