@@ -170,8 +170,8 @@ void AP_FETtecOneWire::update()
     // receive and decode the telemetry data from one ESC
     // but do not process it any further to reduce timing jitter in the escs_set_values() function call
     TelemetryData t {};
-    int16_t centi_erpm;
-    uint16_t tx_err_count;
+    int16_t centi_erpm = 0;    // initialize to prevent false positive error: ‘centi_erpm’ may be used uninitialized in this function
+    uint16_t tx_err_count = 0; // initialize to prevent false positive error: ‘tx_err_count’ may be used uninitialized in this function
     receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
     uint8_t tlm_from_id = 0;
     if (_requested_telemetry_from_esc) {
