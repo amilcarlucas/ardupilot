@@ -16,6 +16,7 @@
 /* Protocol implementation was provided by FETtec */
 
 #include <AP_Math/AP_Math.h>
+#include <AP_Scheduler/AP_Scheduler.h>
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
@@ -24,11 +25,12 @@
 #include "AP_FETtecOneWire.h"
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
 
-#define FTOW_UART_LOCK_KEY 0x0FE77EC0
-
+static constexpr uint32_t FTOW_UART_LOCK_KEY = 0x0FE77EC0;
 static constexpr uint32_t DELAY_TIME_US = 700;
 static constexpr uint32_t RESPONSE_LENGTH = 18;
 static constexpr uint8_t ALL_ID = 0x1F;
+static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
+static constexpr uint8_t MAX_RECEIVE_LENGTH = 14;
 
 const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
     // @Param: MASK
@@ -86,6 +88,56 @@ void AP_FETtecOneWire::init()
     }
 }
 
+bool AP_FETtecOneWire::configuration_ok()
+{
+    if (_update_loop_decimator-- == 0) {
+        _update_loop_decimator = 2 * _update_rate_hz; // once every 2 seconds
+
+        if (!AP::arming().is_armed()) {
+
+            _update_rate_hz = AP::scheduler().get_loop_rate_hz();
+
+            if (!_uart->is_dma_enabled()) {
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
+                return false; // will not work at all without DMA
+            }
+
+            // tell SRV_Channels about ESC capabilities
+            _mask = uint16_t(motor_mask.get());
+            SRV_Channels::set_digital_outputs(_mask, 0);
+
+            uint16_t smask = _mask;
+            _nr_escs_in_bitmask = 0;
+
+            for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
+                SRV_Channel* c = SRV_Channels::srv_channel(i);
+                if (c == nullptr || (smask & 0x01) == 0x00) {
+                    break;
+                }
+                smask >>= 1;
+                _nr_escs_in_bitmask++;
+            }
+
+#if HAL_WITH_ESC_TELEM
+            _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
+            // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
+            const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
+            if (num_active_escs < _nr_escs_in_bitmask) {
+                const uint32_t now = AP_HAL::millis();
+                if ((now-_lastESCScan) > 5000) { //Scan timeout fix here?
+                    GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+                    _lastESCScan = now;
+                    _scan_active = 0;
+                    _setup_active = 0;
+                    _set_full_telemetry_active = 0;
+                    return false; // will restart
+                }
+            }
+#endif
+        }
+    }
+    return true;
+}
 
 void AP_FETtecOneWire::update()
 {
@@ -100,49 +152,22 @@ void AP_FETtecOneWire::update()
         return;
     }
 
-    if (_update_loop_decimator-- == 0) {
-        if (!_uart->is_dma_enabled()) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
-        }
-        // tell SRV_Channels about ESC capabilities
-        _mask = uint16_t(motor_mask.get());
-        SRV_Channels::set_digital_outputs(_mask, 0);
-
-        _update_loop_decimator = 800; // once every 2 seconds
-    }
+    if (!configuration_ok()) {
+        return;
+    };
 
     // get ESC set points, stop as soon as there is a gap
     uint16_t motor_pwm[MOTOR_COUNT_MAX];
-    uint16_t smask = _mask;
-    uint8_t nr_escs = 0;
 
-    for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
+    for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
         SRV_Channel* c = SRV_Channels::srv_channel(i);
-        if (c == nullptr || (smask & 0x01) == 0x00) {
+        if (c == nullptr) {
             break;
         }
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
-        smask >>= 1;
-        nr_escs++;
     }
 
 #if HAL_WITH_ESC_TELEM
-    // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-    if (!AP::arming().is_armed()) {
-        const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
-        if (num_active_escs < nr_escs) {
-            const uint32_t now = AP_HAL::millis();
-            if ((now-_lastESCScan) > 5000) { //Scan timeout fix here?
-                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, nr_escs);
-                _lastESCScan = now;
-                _scan_active = 0;
-                _setup_active = 0;
-                _set_full_telemetry_active = 0;
-            }
-        }
-    }
-
-
     // receive and decode the telemetry data from one ESC
     // but do not process it any further to reduce timing jitter in the escs_set_values() function call
     TelemetryData t {};
@@ -205,7 +230,6 @@ uint8_t AP_FETtecOneWire::get_crc8(uint8_t* buf, uint16_t buf_len) const
     @param bytes 8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
     @param length length of the bytes array (max 4)
 */
-#define MAX_TRANSMIT_LENGTH 4
 void AP_FETtecOneWire::transmit(uint8_t esc_id, uint8_t* bytes, uint8_t length)
 {
     /*
@@ -248,9 +272,12 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     byte X+1 = 8bit CRC
     */
 
-    // look for the real answerOW_SET_TLM_TYPE
+    if (length > MAX_RECEIVE_LENGTH) {
+        length = MAX_RECEIVE_LENGTH;
+    }
+    // look for the real answer
     if (_uart->available() >= length + 6u) {
-        // sync to frame starte byte
+        // sync to frame start byte
         uint8_t test_frame_start = 0;
         do {
             test_frame_start = _uart->read();
@@ -258,7 +285,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         while (test_frame_start != 0x02 && test_frame_start != 0x03 && _uart->available());
         // copy message
         if (_uart->available() >= length + 5u) {
-            uint8_t receive_buf[20] = {0};
+            uint8_t receive_buf[6u + MAX_RECEIVE_LENGTH];
             receive_buf[0] = test_frame_start;
             for (uint8_t i = 1; i < length + 6; i++) {
                 receive_buf[i] = _uart->read();
@@ -311,14 +338,9 @@ bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* r
         _pull_success = false;
         transmit(esc_id, command, _request_length[command[0]]);
     } else {
-        receive_response recv_ret = receive(response, _response_length[command[0]], return_full_frame);
-        switch (recv_ret) {
-            case receive_response::ANSWER_VALID:
-                _pull_success = true;
-                _pull_busy = 0;
-                break;
-            default:
-                break;
+        if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
+            _pull_success = true;
+            _pull_busy = 0;
         }
     }
     return _pull_success;
@@ -576,10 +598,10 @@ uint8_t AP_FETtecOneWire::init_escs()
 void AP_FETtecOneWire::inc_send_msg_count()
 {
     _send_msg_count++;
-    if (_send_msg_count > 1600) { // The update loop runs at 400Hz, hence this resets every second
+    if (_send_msg_count > 4 * _update_rate_hz) { // resets every four seconds
         _send_msg_count = 0; //reset the counter
         for (int i=0; i<_found_escs_count; i++) {
-                _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
+            _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
         }
     }
 }
@@ -592,12 +614,9 @@ void AP_FETtecOneWire::inc_send_msg_count()
 */
 float AP_FETtecOneWire::calc_tx_crc_error_perc(uint8_t esc_id, uint16_t current_error_count)
 {
-    #define HZ_MOTOR 400.0f
-    #define PERCENTAGE_DIVIDER (100.0f/HZ_MOTOR) //to save the division in loop, precalculate by the motor loops 100%/400Hz
-
     _error_count[esc_id] = current_error_count; //Save the error count to the esc
     uint16_t corrected_error_count = (uint16_t)((uint16_t)_error_count[esc_id] - (uint16_t)_error_count_since_overflow[esc_id]); //calculates error difference since last overflow.
-    return (float)corrected_error_count*(float)PERCENTAGE_DIVIDER; //calculates percentage
+    return (float)corrected_error_count*_crc_error_rate_factor; //calculates percentage
 }
 
 #if HAL_WITH_ESC_TELEM

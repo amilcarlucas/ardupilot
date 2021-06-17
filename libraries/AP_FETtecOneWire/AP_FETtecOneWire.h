@@ -56,6 +56,7 @@ private:
     static AP_FETtecOneWire *_singleton;
     bool _initialised;
     AP_HAL::UARTDriver *_uart;
+    bool configuration_ok();
 
     AP_Int32 motor_mask;
     AP_Int8 pole_count;
@@ -191,6 +192,9 @@ receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_er
     uint16_t _send_msg_count; //counts the messages that are send by fc
     uint16_t _update_loop_decimator;
     uint16_t _mask;
+    uint8_t _nr_escs_in_bitmask;
+    uint16_t _update_rate_hz = 400;
+    float _crc_error_rate_factor;
 
     uint8_t _active_esc_ids[MOTOR_COUNT_MAX] = {0};
     FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
