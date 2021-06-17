@@ -51,15 +51,12 @@ public:
         return _singleton;
     }
 private:
-    /// initialize FETtecOneWire protocol
-    void init();
     static AP_FETtecOneWire *_singleton;
     bool _initialised;
     AP_HAL::UARTDriver *_uart;
-    bool configuration_ok();
 
-    AP_Int32 motor_mask;
-    AP_Int8 pole_count;
+    AP_Int32 _motor_mask;
+    AP_Int8 _pole_count;
 
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
@@ -71,8 +68,8 @@ private:
 
     enum class return_type : uint8_t
     {
-      RESPONSE,
-      FULL_FRAME
+        RESPONSE,
+        FULL_FRAME
     };
 
     enum class receive_response : uint8_t
@@ -82,108 +79,119 @@ private:
         CRC_MISSMATCH
     };
 
-/**
-    increment package count for every ESC
-*/
-void inc_send_msg_count();
+    /**
+        initialize the serial port
+    */
+    void init();
 
-/**
-    calculates crc tx error rate for incoming packages. It converts the CRC error counts into percentage
-    @param esc_id id of ESC, that the error is calculated for
-    @param esc_error_count the error count given by the esc
-    @return the error in percent
-*/
-float calc_tx_crc_error_perc(uint8_t esc_id, uint16_t esc_error_count);
+    /**
+        update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
+        @return true if configuration is OK
+    */
+    bool configuration_ok();
 
-/**
-    generates used 8 bit CRC for arrays
-    @param buf 8 bit byte array
-    @param buf_len count of bytes that should be used for CRC calculation
-    @return 8 bit CRC
-*/
-    uint8_t get_crc8(uint8_t *buf, uint16_t buf_len) const;
+    /**
+        increment message packet count for every ESC
+    */
+    void inc_send_msg_count();
 
-/**
-    transmits a FETtec OneWire frame to an ESC
-    @param esc_id id of the ESC
-    @param bytes  8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
-    @param length length of the bytes array
-*/
-    void transmit(uint8_t esc_id, uint8_t *bytes, uint8_t length);
+    /**
+        calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
+        @param esc_id id of ESC, that the error is calculated for
+        @param esc_error_count the error count given by the esc
+        @return the error in percent
+    */
+    float calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t esc_error_count);
 
-/**
-    reads the FETtec OneWire answer frame of an ESC
-    @param bytes 8 bit byte array, where the received answer gets stored in
-    @param length the expected answer length
-    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
-    @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
-*/
+    /**
+        generates used 8 bit CRC for arrays
+        @param buf 8 bit byte array
+        @param buf_len count of bytes that should be used for CRC calculation
+        @return 8 bit CRC
+    */
+    uint8_t get_crc8(const uint8_t *buf, const uint16_t buf_len) const;
+
+    /**
+        transmits a FETtec OneWire frame to an ESC
+        @param esc_id id of the ESC
+        @param bytes  8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
+        @param length length of the bytes array
+    */
+    void transmit(const uint8_t esc_id, const uint8_t *bytes, uint8_t length);
+
+    /**
+        reads the FETtec OneWire answer frame of an ESC
+        @param bytes 8 bit byte array, where the received answer gets stored in
+        @param length the expected answer length
+        @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+        @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
+    */
     receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
 
-/**
-    Resets a pending pull request
-*/
+    /**
+        Resets a pending pull request
+    */
     void pull_reset();
 
-/**
-    Pulls a complete request between flight controller and ESC
-    @param esc_id id of the ESC
-    @param command 8bit array containing the command that should be send including the possible payload
-    @param response 8bit array where the response will be stored in
-    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
-    @return true if the request is completed, false if dont
-*/
-    bool pull_command(uint8_t esc_id, uint8_t *command, uint8_t *response, return_type return_full_frame);
+    /**
+        Pulls a complete request between flight controller and ESC
+        @param esc_id id of the ESC
+        @param command 8bit array containing the command that should be send including the possible payload
+        @param response 8bit array where the response will be stored in
+        @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+        @return true if the request is completed, false if dont
+    */
+    bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame);
 
-/**
-    scans for ESCs in bus. should be called until _scan_active >= MOTOR_COUNT_MAX
-    @return the current scanned ID
-*/
+    /**
+        scans for ESCs in bus. should be called until _scan_active >= MOTOR_COUNT_MAX
+        @return the current scanned ID
+    */
     uint8_t scan_escs();
 
-/**
-    starts all ESCs in bus and prepares them for receiving teh fast throttle command should be called until _setup_active >= MOTOR_COUNT_MAX
-    @return the current used ID
-*/
+    /**
+        starts all ESCs in bus and prepares them for receiving teh fast throttle command should be called until _setup_active >= MOTOR_COUNT_MAX
+        @return the current used ID
+    */
     uint8_t init_escs();
 
-/**
-    sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
-    @param active if full telemetry should be used
-    @return returns the response code
-*/
+    /**
+        sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
+        @param active if full telemetry should be used
+        @return returns the response code
+    */
     uint8_t set_full_telemetry(uint8_t active);
 
 #if HAL_WITH_ESC_TELEM
-/**
-    checks if the requested telemetry is available.
-    @param t telemetry datastructure where the read telemetry will be stored in.
-    @param centi_erpm 16bit centi-eRPM value returned from the ESC
-    @param tx_err_count Ardupilot->ESC communication CRC error counter
-    @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
-    @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
-*/
-receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id);
+    /**
+        checks if the requested telemetry is available.
+        @param t telemetry datastructure where the read telemetry will be stored in.
+        @param centi_erpm 16bit centi-eRPM value returned from the ESC
+        @param tx_err_count Ardupilot->ESC communication CRC error counter
+        @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
+        @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
+    */
+    receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id);
 #endif
 
-/**
-    scans for ESCs if not already done.
-    initializes the ESCs if not already done.
-    sends fast throttle signals if init is complete.
-    @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
-    @param motor_count the count of motors that should get values send
-    @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
-*/
+    /**
+        scans for ESCs if not already done.
+        initializes the ESCs if not already done.
+        sends fast throttle signals if init is complete.
+        @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
+        @param motor_count the count of motors that should get values send
+        @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+    */
     void escs_set_values(const uint16_t *motor_values, const uint8_t motor_count, const uint8_t tlm_request);
 
     typedef struct FETtecOneWireESC
     {
-      uint8_t in_boot_loader;
+        uint8_t in_boot_loader;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-      uint8_t firmware_version;
-      uint8_t firmware_sub_version;
-      uint8_t esc_type;
-      uint8_t serial_number[12];
+        uint8_t firmware_version;
+        uint8_t firmware_sub_version;
+        uint8_t esc_type;
+        uint8_t serial_number[12];
 #endif
     } FETtecOneWireESC_t;
 
@@ -203,7 +211,7 @@ receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_er
     uint8_t _setup_active;
 
     uint8_t _set_full_telemetry_active = 1; //Helper to set alternative TLM for every ESC
-    uint8_t _set_full_telemetry_retry_count = 0; 
+    uint8_t _set_full_telemetry_retry_count;
     uint8_t _ignore_own_bytes;
     int8_t _min_id = MOTOR_COUNT_MAX;
     int8_t _max_id;
@@ -216,51 +224,51 @@ receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_er
     uint32_t _lastESCScan;
     enum msg_type
     {
-      OW_OK,
-      OW_BL_PAGE_CORRECT,   // BL only
-      OW_NOT_OK,
-      OW_BL_START_FW,       // BL only
-      OW_BL_PAGES_TO_FLASH, // BL only
-      OW_REQ_TYPE,
-      OW_REQ_SN,
-      OW_REQ_SW_VER,
-      OW_BEEP = 13,
-      OW_SET_FAST_COM_LENGTH = 26,
-      OW_SET_TLM_TYPE = 27, //1 for alternative telemetry. ESC sens full telem per ESC: Temp, Volt, Current, ERPM, Consumption, CrcErrCount
-      OW_SET_LED_TMP_COLOR = 51,
+        OW_OK = 0,
+        OW_BL_PAGE_CORRECT,   // BL only
+        OW_NOT_OK,
+        OW_BL_START_FW,       // BL only
+        OW_BL_PAGES_TO_FLASH, // BL only
+        OW_REQ_TYPE,
+        OW_REQ_SN,
+        OW_REQ_SW_VER,
+        OW_BEEP = 13,
+        OW_SET_FAST_COM_LENGTH = 26,
+        OW_SET_TLM_TYPE = 27, //1 for alternative telemetry. ESC sends full telem per ESC: Temp, Volt, Current, ERPM, Consumption, CrcErrCount
+        OW_SET_LED_TMP_COLOR = 51,
     };
 
     enum telem_type
     {
-      TEMP,
-      VOLT,
-      CURRENT,
-      ERPM,
-      CONSUMPTION,
-      DEBUG1,
-      DEBUG2,
-      DEBUG3
+        TEMP = 0,
+        VOLT,
+        CURRENT,
+        ERPM,
+        CONSUMPTION,
+        DEBUG1,
+        DEBUG2,
+        DEBUG3
     };
 
     /// presistent scan state data (only used inside scan_escs() function)
     struct scan_state
     {
-      uint16_t delay_loops;
-      uint8_t scan_id;
-      uint8_t scan_state;
-      uint8_t scan_timeout;
-    } _ss;
+        uint16_t delay_loops;
+        uint8_t id;
+        uint8_t state;
+        uint8_t timeout;
+    } _scan;
 
     /// presistent init state data (only used inside init_escs() function)
     struct init_state
     {
-      uint8_t delay_loops;
-      uint8_t active_id;
-      uint8_t state;
-      uint8_t timeout;
-      uint8_t wake_from_bl;
-      uint8_t set_fast_command[4] = {OW_SET_FAST_COM_LENGTH, 0, 0, 0};
-    } _is;
+        uint8_t delay_loops;
+        uint8_t active_id;
+        uint8_t state;
+        uint8_t timeout;
+        uint8_t wake_from_bl;
+        uint8_t set_fast_command[4] = {OW_SET_FAST_COM_LENGTH, 0, 0, 0};
+    } _init;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; // OW_SET_LED_TMP_COLOR is ignored here
     uint8_t _request_length[OW_SET_TLM_TYPE+1];  // OW_SET_LED_TMP_COLOR is ignored here

@@ -28,6 +28,7 @@
 static constexpr uint32_t FTOW_UART_LOCK_KEY = 0x0FE77EC0;
 static constexpr uint32_t DELAY_TIME_US = 700;
 static constexpr uint32_t RESPONSE_LENGTH = 18;
+static constexpr uint32_t BAUDRATE = 500000;
 static constexpr uint8_t ALL_ID = 0x1F;
 static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
 static constexpr uint8_t MAX_RECEIVE_LENGTH = 14;
@@ -39,7 +40,7 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
     // @Bitmask: 0:Channel1,1:Channel2,2:Channel3,3:Channel4,4:Channel5,5:Channel6,6:Channel7,7:Channel8,8:Channel9,9:Channel10,10:Channel11,11:Channel12,12:Channel13,13:Channel14,14:Channel15,15:Channel16
     // @RebootRequired: True
     // @User: Standard
-    AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, motor_mask, 0),
+    AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask, 0),
 
     // @Param: POLES
     // @DisplayName: Nr. electrical poles
@@ -47,7 +48,7 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
     // @Range: 2 50
     // @RebootRequired: False
     // @User: Standard
-    AP_GROUPINFO("POLES", 2, AP_FETtecOneWire, pole_count, 14),
+    AP_GROUPINFO("POLES", 2, AP_FETtecOneWire, _pole_count, 14),
 
     AP_GROUPEND
 };
@@ -75,6 +76,9 @@ AP_FETtecOneWire::AP_FETtecOneWire()
     _request_length[OW_SET_TLM_TYPE] = 2;
 }
 
+/**
+  initialize the serial port
+*/
 void AP_FETtecOneWire::init()
 {
     AP_SerialManager& serial_manager = AP::serialmanager();
@@ -83,11 +87,15 @@ void AP_FETtecOneWire::init()
         _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
         _uart->set_unbuffered_writes(true);
         _uart->set_blocking_writes(false);
-        _uart->begin(500000);
+        _uart->begin(BAUDRATE);
         _initialised = true;
     }
 }
 
+/**
+  update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
+  @return true if configuration is OK
+*/
 bool AP_FETtecOneWire::configuration_ok()
 {
     if (_update_loop_decimator-- == 0) {
@@ -103,7 +111,7 @@ bool AP_FETtecOneWire::configuration_ok()
             }
 
             // tell SRV_Channels about ESC capabilities
-            _mask = uint16_t(motor_mask.get());
+            _mask = uint16_t(_motor_mask.get());
             SRV_Channels::set_digital_outputs(_mask, 0);
 
             uint16_t smask = _mask;
@@ -193,14 +201,14 @@ void AP_FETtecOneWire::update()
 #if HAL_WITH_ESC_TELEM
     // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
 
-    inc_send_msg_count(); // increment package count for every ESC
+    inc_send_msg_count(); // increment message packet count for every ESC
 
     if (_requested_telemetry_from_esc && tlm_ok==receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
-        if (pole_count < 2) { // If Parameter is invalid use 14 Poles
-            pole_count = 14;
+        if (_pole_count < 2) { // If Parameter is invalid use 14 Poles
+            _pole_count = 14;
         }
         const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
-        update_rpm(tlm_from_id-1, centi_erpm*100*2/pole_count.get(), tx_err_rate);
+        update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
 
         update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
     }
@@ -214,7 +222,7 @@ void AP_FETtecOneWire::update()
     @param buf_len count of bytes that should be used for CRC calculation
     @return 8 bit CRC
 */
-uint8_t AP_FETtecOneWire::get_crc8(uint8_t* buf, uint16_t buf_len) const
+uint8_t AP_FETtecOneWire::get_crc8(const uint8_t* buf, const uint16_t buf_len) const
 {
     uint8_t crc = 0;
     for (uint16_t i = 0; i < buf_len; i++) {
@@ -229,7 +237,7 @@ uint8_t AP_FETtecOneWire::get_crc8(uint8_t* buf, uint16_t buf_len) const
     @param bytes 8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
     @param length length of the bytes array (max 4)
 */
-void AP_FETtecOneWire::transmit(uint8_t esc_id, uint8_t* bytes, uint8_t length)
+void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint8_t length)
 {
     /*
     a frame looks like:
@@ -303,10 +311,10 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
                 return receive_response::ANSWER_VALID;
             } else {
                 return receive_response::CRC_MISSMATCH;
-            } 
+            }
         } else {
             return receive_response::NO_ANSWER_YET;
-        } 
+        }
     } else {
         return receive_response::NO_ANSWER_YET;
     }
@@ -329,18 +337,16 @@ void AP_FETtecOneWire::pull_reset()
     @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @return true if the request is completed, false if dont
 */
-bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* response,
+bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command, uint8_t* response,
         return_type return_full_frame)
 {
     if (!_pull_busy) {
         _pull_busy = true;
         _pull_success = false;
         transmit(esc_id, command, _request_length[command[0]]);
-    } else {
-        if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
-            _pull_busy = false;
-            _pull_success = true;
-        }
+    } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
+        _pull_busy = false;
+        _pull_success = true;
     }
     return _pull_success;
 }
@@ -354,87 +360,91 @@ uint8_t AP_FETtecOneWire::scan_escs()
     uint8_t response[RESPONSE_LENGTH];
     uint8_t request[1];
     if (_scan_active == 0) {
-        _ss.delay_loops = 500;
-        _ss.scan_id = 0;
-        _ss.scan_state = 0;
-        _ss.scan_timeout = 0;
+        _scan.delay_loops = 500;
+        _scan.id = 0;
+        _scan.state = 0;
+        _scan.timeout = 0;
         return _scan_active + 1;
     }
-    if (_ss.delay_loops > 0) {
-        _ss.delay_loops--;
+    if (_scan.delay_loops > 0) {
+        _scan.delay_loops--;
         return _scan_active;
     }
-    if (_ss.scan_id < _scan_active) {
-        _ss.scan_id = _scan_active;
-        _ss.scan_state = 0;
-        _ss.scan_timeout = 0;
+    if (_scan.id < _scan_active) {
+        _scan.id = _scan_active;
+        _scan.state = 0;
+        _scan.timeout = 0;
     }
-    if (_ss.scan_timeout == 3 || _ss.scan_timeout == 6 || _ss.scan_timeout == 9 || _ss.scan_timeout == 12) {
+    if (_scan.timeout == 3 || _scan.timeout == 6 || _scan.timeout == 9 || _scan.timeout == 12) {
         pull_reset();
     }
-    if (_ss.scan_timeout < 15) {
-        switch (_ss.scan_state) {
-        case 0:request[0] = OW_OK;
-            if (pull_command(_ss.scan_id, request, response, return_type::FULL_FRAME)) {
-                _ss.scan_timeout = 0;
-                _active_esc_ids[_ss.scan_id] = 1;
+    if (_scan.timeout < 15) {
+        switch (_scan.state) {
+        case 0:
+            request[0] = OW_OK;
+            if (pull_command(_scan.id, request, response, return_type::FULL_FRAME)) {
+                _scan.timeout = 0;
+                _active_esc_ids[_scan.id] = 1;
                 _found_escs_count++;
                 if (response[0] == 0x02) {
-                    _found_escs[_ss.scan_id].in_boot_loader = 1;
+                    _found_escs[_scan.id].in_boot_loader = 1;
                 } else {
-                    _found_escs[_ss.scan_id].in_boot_loader = 0;
+                    _found_escs[_scan.id].in_boot_loader = 0;
                 }
-                _ss.delay_loops = 1;
-                _ss.scan_state++;
+                _scan.delay_loops = 1;
+                _scan.state++;
             } else {
-                _ss.scan_timeout++;
+                _scan.timeout++;
             }
             break;
-        case 1:request[0] = OW_REQ_TYPE;
-            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
-                _ss.scan_timeout = 0;
+        case 1:
+            request[0] = OW_REQ_TYPE;
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+                _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                _found_escs[_ss.scanID].esc_type = response[0];
+                _found_escs[_scan.scanID].esc_type = response[0];
 #endif
-                _ss.delay_loops = 1;
-                _ss.scan_state++;
+                _scan.delay_loops = 1;
+                _scan.state++;
             } else {
-                _ss.scan_timeout++;
+                _scan.timeout++;
             }
             break;
-        case 2:request[0] = OW_REQ_SW_VER;
-            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
-                _ss.scan_timeout = 0;
+        case 2:
+            request[0] = OW_REQ_SW_VER;
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+                _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                _found_escs[_ss.scanID].firmware_version = response[0];
-                _found_escs[_ss.scanID].firmware_sub_version = response[1];
+                _found_escs[_scan.scanID].firmware_version = response[0];
+                _found_escs[_scan.scanID].firmware_sub_version = response[1];
 #endif
-                _ss.delay_loops = 1;
-                _ss.scan_state++;
+                _scan.delay_loops = 1;
+                _scan.state++;
             } else {
-                _ss.scan_timeout++;
+                _scan.timeout++;
             }
             break;
-        case 3:request[0] = OW_REQ_SN;
-            if (pull_command(_ss.scan_id, request, response, return_type::RESPONSE)) {
-                _ss.scan_timeout = 0;
+        case 3:
+            request[0] = OW_REQ_SN;
+            if (pull_command(_scan.id, request, response, return_type::RESPONSE)) {
+                _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 for (uint8_t i = 0; i < 12; i++) {
-                    _found_escs[_ss.scanID].serialNumber[i] = response[i];
+                    _found_escs[_scan.scanID].serialNumber[i] = response[i];
                 }
 #endif
-                _ss.delay_loops = 1;
-                return _ss.scan_id + 1;
+                _scan.delay_loops = 1;
+                return _scan.id + 1;
             } else {
-                _ss.scan_timeout++;
+                _scan.timeout++;
             }
             break;
         }
     } else {
         pull_reset();
-        return _ss.scan_id + 1;
+        return _scan.id + 1;
     }
-    return _ss.scan_id;
+    return _scan.id;
 }
 
 /**
@@ -480,25 +490,25 @@ uint8_t AP_FETtecOneWire::init_escs()
     uint8_t response[RESPONSE_LENGTH];
     uint8_t request[1];
     if (_setup_active == 0) {
-        _is.delay_loops = 0;
-        _is.active_id = 1;
-        _is.state = 0;
-        _is.timeout = 0;
-        _is.wake_from_bl = 1;
+        _init.delay_loops = 0;
+        _init.active_id = 1;
+        _init.state = 0;
+        _init.timeout = 0;
+        _init.wake_from_bl = 1;
         return _setup_active + 1;
     }
     while (_active_esc_ids[_setup_active] == 0 && _setup_active < MOTOR_COUNT_MAX) {
         _setup_active++;
     }
 
-    if (_setup_active == MOTOR_COUNT_MAX && _is.wake_from_bl == 0) {
+    if (_setup_active == MOTOR_COUNT_MAX && _init.wake_from_bl == 0) {
         return _setup_active;
-    } else if (_setup_active == MOTOR_COUNT_MAX && _is.wake_from_bl) {
-        _is.wake_from_bl = 0;
-        _is.active_id = 1;
+    } else if (_setup_active == MOTOR_COUNT_MAX && _init.wake_from_bl) {
+        _init.wake_from_bl = 0;
+        _init.active_id = 1;
         _setup_active = 1;
-        _is.state = 0;
-        _is.timeout = 0;
+        _init.state = 0;
+        _init.timeout = 0;
 
         _min_id = MOTOR_COUNT_MAX;
         _max_id = 0;
@@ -517,8 +527,8 @@ uint8_t AP_FETtecOneWire::init_escs()
 
         if (_id_count == 0
                 || _max_id - _min_id > _id_count - 1) { // loop forever
-            _is.wake_from_bl = 1;
-            return _is.active_id;
+            _init.wake_from_bl = 1;
+            return _init.active_id;
         }
         _fast_throttle_byte_count = 1;
         int8_t bitCount = 12 + (_id_count * 11);
@@ -526,73 +536,75 @@ uint8_t AP_FETtecOneWire::init_escs()
             _fast_throttle_byte_count++;
             bitCount -= 8;
         }
-        _is.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-        _is.set_fast_command[2] = _min_id;                 // min ESC id
-        _is.set_fast_command[3] = _id_count;               // count of ESCs that will get signals
+        _init.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
+        _init.set_fast_command[2] = _min_id;                 // min ESC id
+        _init.set_fast_command[3] = _id_count;               // count of ESCs that will get signals
     }
 
-    if (_is.delay_loops > 0) {
-        _is.delay_loops--;
+    if (_init.delay_loops > 0) {
+        _init.delay_loops--;
         return _setup_active;
     }
 
-    if (_is.active_id < _setup_active) {
-        _is.active_id = _setup_active;
-        _is.state = 0;
-        _is.timeout = 0;
+    if (_init.active_id < _setup_active) {
+        _init.active_id = _setup_active;
+        _init.state = 0;
+        _init.timeout = 0;
     }
 
-    if (_is.timeout == 3 || _is.timeout == 6 || _is.timeout == 9 || _is.timeout == 12) {
+    if (_init.timeout == 3 || _init.timeout == 6 || _init.timeout == 9 || _init.timeout == 12) {
         pull_reset();
     }
 
-    if (_is.timeout < 15) {
-        if (_is.wake_from_bl) {
-            switch (_is.state) {
-            case 0:request[0] = OW_BL_START_FW;
-                if (_found_escs[_is.active_id].in_boot_loader == 1) {
-                    transmit(_is.active_id, request, _request_length[request[0]]);
-                    _is.delay_loops = 5;
+    if (_init.timeout < 15) {
+        if (_init.wake_from_bl) {
+            switch (_init.state) {
+            case 0:
+                request[0] = OW_BL_START_FW;
+                if (_found_escs[_init.active_id].in_boot_loader == 1) {
+                    transmit(_init.active_id, request, _request_length[request[0]]);
+                    _init.delay_loops = 5;
                 } else {
-                    return _is.active_id + 1;
+                    return _init.active_id + 1;
                 }
-                _is.state = 1;
+                _init.state = 1;
                 break;
-            case 1:request[0] = OW_OK;
-                if (pull_command(_is.active_id, request, response, return_type::FULL_FRAME)) {
-                    _is.timeout = 0;
+            case 1:
+                request[0] = OW_OK;
+                if (pull_command(_init.active_id, request, response, return_type::FULL_FRAME)) {
+                    _init.timeout = 0;
                     if (response[0] == 0x02) {
-                        _found_escs[_is.active_id].in_boot_loader = 1;
-                        _is.state = 0;
+                        _found_escs[_init.active_id].in_boot_loader = 1;
+                        _init.state = 0;
                     } else {
-                        _found_escs[_is.active_id].in_boot_loader = 0;
-                        _is.delay_loops = 1;
-                        return _is.active_id + 1;
+                        _found_escs[_init.active_id].in_boot_loader = 0;
+                        _init.delay_loops = 1;
+                        return _init.active_id + 1;
                     }
                 } else {
-                    _is.timeout++;
+                    _init.timeout++;
                 }
                 break;
             }
         } else {
-            if (pull_command(_is.active_id, _is.set_fast_command, response, return_type::RESPONSE)) {
-                _is.timeout = 0;
-                _is.delay_loops = 1;
-                return _is.active_id + 1;
+            if (pull_command(_init.active_id, _init.set_fast_command, response, return_type::RESPONSE)) {
+                _init.timeout = 0;
+                _init.delay_loops = 1;
+                return _init.active_id + 1;
             } else {
-                _is.timeout++;
+                _init.timeout++;
             }
         }
     } else {
         pull_reset();
-        return _is.active_id + 1;
+        return _init.active_id + 1;
     }
-    return _is.active_id;
+    return _init.active_id;
 }
 
 
 /**
-    increment package count for every ESC
+    increment message packet count for every ESC
 */
 void AP_FETtecOneWire::inc_send_msg_count()
 {
@@ -606,12 +618,12 @@ void AP_FETtecOneWire::inc_send_msg_count()
 }
 
 /**
-    calculates crc tx error rate for incoming packages. It converts the CRC error counts into percentage
+    calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
     @param esc_id id of ESC, that the error is calculated for
     @param current_error_count the error count given by the esc
     @return the error in percent
 */
-float AP_FETtecOneWire::calc_tx_crc_error_perc(uint8_t esc_id, uint16_t current_error_count)
+float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t current_error_count)
 {
     _error_count[esc_id] = current_error_count; //Save the error count to the esc
     uint16_t corrected_error_count = (uint16_t)((uint16_t)_error_count[esc_id] - (uint16_t)_error_count_since_overflow[esc_id]); //calculates error difference since last overflow.
@@ -685,7 +697,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
 
         }
         else if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) { //Set telemetry to alternative mode
-               _set_full_telemetry_active = set_full_telemetry(1);
+            _set_full_telemetry_active = set_full_telemetry(1);
         }
     } else {
         //send fast throttle signals
