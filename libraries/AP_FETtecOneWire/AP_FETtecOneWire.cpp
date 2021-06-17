@@ -144,7 +144,6 @@ void AP_FETtecOneWire::update()
 
     if (!_initialised) {
         init();
-        _last_send_us = AP_HAL::micros();
         return;
     }
 
@@ -319,7 +318,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
 void AP_FETtecOneWire::pull_reset()
 {
     _pull_success = false;
-    _pull_busy = 0;
+    _pull_busy = false;
 }
 
 /**
@@ -334,13 +333,13 @@ bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* r
         return_type return_full_frame)
 {
     if (!_pull_busy) {
-        _pull_busy = 1;
+        _pull_busy = true;
         _pull_success = false;
         transmit(esc_id, command, _request_length[command[0]]);
     } else {
         if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
+            _pull_busy = false;
             _pull_success = true;
-            _pull_busy = 0;
         }
     }
     return _pull_success;
@@ -352,8 +351,8 @@ bool AP_FETtecOneWire::pull_command(uint8_t esc_id, uint8_t* command, uint8_t* r
 */
 uint8_t AP_FETtecOneWire::scan_escs()
 {
-    uint8_t response[RESPONSE_LENGTH] = {0};
-    uint8_t request[1] = {0};
+    uint8_t response[RESPONSE_LENGTH];
+    uint8_t request[1];
     if (_scan_active == 0) {
         _ss.delay_loops = 500;
         _ss.scan_id = 0;
@@ -445,8 +444,8 @@ uint8_t AP_FETtecOneWire::scan_escs()
 uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 {
     if (_active_esc_ids[_set_full_telemetry_active]==1) { //If ESC is detected at this ID
-        uint8_t response[1] = {0};
-        uint8_t request[2] = {0};
+        uint8_t response[1];
+        uint8_t request[2];
         request[0] = OW_SET_TLM_TYPE;
         request[1] = active; //Alternative Tlm => 1, normal TLM => 0
         bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE);
@@ -461,7 +460,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 
             _set_full_telemetry_retry_count++;
             if (_set_full_telemetry_retry_count>128) { //It is important to have the correct telemetry set so start over if there is something wrong.
-                _pull_busy=0;
+                _pull_busy=false;
                 _set_full_telemetry_active=1;
             }
         }
@@ -478,8 +477,8 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 */
 uint8_t AP_FETtecOneWire::init_escs()
 {
-    uint8_t response[RESPONSE_LENGTH] = {0};
-    uint8_t request[1] = {0};
+    uint8_t response[RESPONSE_LENGTH];
+    uint8_t request[1];
     if (_setup_active == 0) {
         _is.delay_loops = 0;
         _is.active_id = 1;
@@ -691,7 +690,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
     } else {
         //send fast throttle signals
         if (_id_count > 0) {
-            uint8_t fast_throttle_command[36] = {0};
+            uint8_t fast_throttle_command[36] = { };
             uint8_t act_throttle_command = 0;
 
             // byte 1:

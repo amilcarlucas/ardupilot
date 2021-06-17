@@ -210,7 +210,7 @@ receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_er
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
     bool _pull_success;
-    uint8_t _pull_busy;
+    bool _pull_busy;
     uint8_t _tlm_request;
     uint8_t _last_crc;
     uint32_t _lastESCScan;
