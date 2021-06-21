@@ -751,8 +751,6 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
             fast_throttle_command[_fast_throttle_byte_count - 1] = get_crc8(
                     fast_throttle_command, _fast_throttle_byte_count - 1);
             _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
-            // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
-            _last_crc = fast_throttle_command[_fast_throttle_byte_count - 1];
         }
     }
 }

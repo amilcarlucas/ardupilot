@@ -216,8 +216,6 @@ private:
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
-    uint8_t _tlm_request;
-    uint8_t _last_crc;
     bool _active_esc_ids[MOTOR_COUNT_MAX];
     bool _uart_initialised;
     bool _pull_success;
