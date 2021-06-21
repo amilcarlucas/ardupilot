@@ -289,6 +289,8 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
             for (uint8_t i = 1; i < length + 6; i++) {
                 receive_buf[i] = _uart->read();
             }
+            // empty buffer, we are not expecting any more data now
+            _uart->discard_input();
             // check CRC
             if (get_crc8(receive_buf, length + 5) == receive_buf[length + 5]) {
                 if (return_full_frame == return_type::RESPONSE) {
