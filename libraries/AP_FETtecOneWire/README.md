@@ -132,15 +132,14 @@ And this code snippet to the .cpp file:
 */
 void AP_FETtecOneWire::Beep(uint8_t beepFrequency)
 {
-    if (_IDcount > 0) {
+    if (_id_count > 0) {
         const uint8_t request[2] = {OW_BEEP, beepFrequency};
         const uint8_t request_len[1] = {2};
         const uint8_t spacer[2] = {0, 0};
-        for (uint8_t i = _minID; i < _maxID + 1; i++) {
+        for (uint8_t i = _min_id; i < _max_id + 1; i++) {
             Transmit(i, request, request_len);
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
             _uart->write(spacer, 2);
-            _IgnoreOwnBytes += 2;
         }
     }
 }
@@ -153,15 +152,14 @@ void AP_FETtecOneWire::Beep(uint8_t beepFrequency)
 */
 void AP_FETtecOneWire::RW_LEDcolor(uint8_t R, uint8_t G, uint8_t B)
 {
-    if (_IDcount > 0) {
+    if (_id_count > 0) {
         const uint8_t request[4] = {OW_SET_LED_TMP_COLOR, R, G, B};
         const uint8_t request_len[1] = {4};
         const uint8_t spacer[2] = {0, 0};
-        for (uint8_t i = _minID; i < _maxID + 1; i++) {
+        for (uint8_t i = _min_id; i < _max_id + 1; i++) {
             Transmit(i, request, request_len);
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
             _uart->write(spacer, 2);
-            _IgnoreOwnBytes += 2;
         }
     }
 }
