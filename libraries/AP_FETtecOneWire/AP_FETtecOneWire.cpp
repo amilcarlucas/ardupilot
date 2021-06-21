@@ -477,7 +477,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 }
 
 /**
-    starts all ESCs in bus and prepares them for receiving the fast throttle command should be called until _setup_active >= MOTOR_COUNT_MAX
+    starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _setup_active >= MOTOR_COUNT_MAX
     @return the current used ID
 */
 uint8_t AP_FETtecOneWire::init_escs()
