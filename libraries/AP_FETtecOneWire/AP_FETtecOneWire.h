@@ -200,12 +200,11 @@ private:
     uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
     uint16_t _send_msg_count; //counts the messages that are send by fc
-    uint16_t _update_rate_hz = 400;
+    uint16_t _update_rate_hz;
 #endif
     uint16_t _mask;
     uint8_t _nr_escs_in_bitmask;
 
-    uint8_t _active_esc_ids[MOTOR_COUNT_MAX] = {0};
     uint8_t _found_escs_count;
     uint8_t _scan_active;
     uint8_t _setup_active;
@@ -220,7 +219,8 @@ private:
     uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     uint8_t _tlm_request;
     uint8_t _last_crc;
-    bool _initialised;
+    bool _active_esc_ids[MOTOR_COUNT_MAX];
+    bool _uart_initialised;
     bool _pull_success;
     bool _pull_busy;
 

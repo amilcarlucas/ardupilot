@@ -86,7 +86,7 @@ void AP_FETtecOneWire::init()
         _uart->set_unbuffered_writes(true);
         _uart->set_blocking_writes(false);
         _uart->begin(BAUDRATE);
-        _initialised = true;
+        _uart_initialised = true;
     }
 }
 
@@ -147,7 +147,7 @@ void AP_FETtecOneWire::configuration_update()
 void AP_FETtecOneWire::update()
 {
 
-    if (!_initialised) {
+    if (!_uart_initialised) {
         init();
     }
 
@@ -187,23 +187,23 @@ void AP_FETtecOneWire::update()
     if (_nr_escs_in_bitmask) {
         // send motor setpoints to ESCs, and request for telemetry data
         escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
-    }
 
 #if HAL_WITH_ESC_TELEM
-    // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
+        // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
 
-    inc_send_msg_count(); // increment message packet count for every ESC
+        inc_send_msg_count(); // increment message packet count for every ESC
 
-    if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
-        if (_pole_count < 2) { // If Parameter is invalid use 14 Poles
-            _pole_count = 14;
+        if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
+            if (_pole_count < 2) { // If Parameter is invalid use 14 Poles
+                _pole_count = 14;
+            }
+            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
+            update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
+
+            update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
         }
-        const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
-        update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
-
-        update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
-    }
 #endif
+    }
 
     // now that all real-time tasks have been done, update the configuration if necessary
     configuration_update();
@@ -378,7 +378,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             request[0] = OW_OK;
             if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
                 _scan.timeout = 0;
-                _active_esc_ids[_scan.id] = 1;
+                _active_esc_ids[_scan.id] = true;
                 _found_escs_count++;
                 if (response[0] == 0x02) {
                     _found_escs[_scan.id].in_boot_loader = 1;
@@ -447,7 +447,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
 */
 uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 {
-    if (_active_esc_ids[_set_full_telemetry_active]==1) { //If ESC is detected at this ID
+    if (_active_esc_ids[_set_full_telemetry_active]) { //If ESC is detected at this ID
         uint8_t response[1];
         uint8_t request[2];
         request[0] = OW_SET_TLM_TYPE;
@@ -490,7 +490,7 @@ uint8_t AP_FETtecOneWire::init_escs()
         _init.wake_from_bl = 1;
         return _setup_active + 1;
     }
-    while (_active_esc_ids[_setup_active] == 0 && _setup_active < MOTOR_COUNT_MAX) {
+    while (_active_esc_ids[_setup_active] == false && _setup_active < MOTOR_COUNT_MAX) {
         _setup_active++;
     }
 
@@ -507,7 +507,7 @@ uint8_t AP_FETtecOneWire::init_escs()
         _max_id = 0;
         _id_count = 0;
         for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-            if (_active_esc_ids[i] != 0) {
+            if (_active_esc_ids[i]) {
                 _id_count++;
                 if (i < _min_id) {
                     _min_id = i;
@@ -751,7 +751,6 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
             _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
             // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
             _last_crc = fast_throttle_command[_fast_throttle_byte_count - 1];
-            // the ESCs will answer the TLM as 16bit each ESC, so 2byte each ESC. @torsten: is this comment correct?
         }
     }
 }
