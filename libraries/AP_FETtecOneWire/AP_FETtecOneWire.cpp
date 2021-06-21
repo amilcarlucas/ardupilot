@@ -20,10 +20,11 @@
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
-#include <AP_Arming/AP_Arming.h>
 
 #include "AP_FETtecOneWire.h"
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
+
+extern const AP_HAL::HAL& hal;
 
 static constexpr uint32_t FTOW_UART_LOCK_KEY = 0x0FE77EC0;
 static constexpr uint32_t DELAY_TIME_US = 700;
@@ -94,10 +95,10 @@ void AP_FETtecOneWire::init()
 */
 void AP_FETtecOneWire::configuration_update()
 {
-    if (!AP::arming().is_armed()) {
+    if (!hal.util->get_soft_armed()) { // configuration updates are only done when vehicle is disarmed
 
         const uint32_t now = AP_HAL::millis();
-        if (_last_config_update_ms == 0 || now - _last_config_update_ms > 2000) {  // only runs once every 2 seconds
+        if ((now - _last_config_update_ms > 2000) || _last_config_update_ms == 0) {  // only runs once every 2 seconds
             _last_config_update_ms = now;
 
             if (!_uart->is_dma_enabled()) {
@@ -105,7 +106,7 @@ void AP_FETtecOneWire::configuration_update()
                 return; // will not work at all without DMA
             }
 
-            // get the user configured expected FETtec ESCs bitmask
+            // get the user-configured FETtec ESCs bitmask parameter
             _mask = uint16_t(_motor_mask.get());
             // tell SRV_Channels about ESC capabilities
             SRV_Channels::set_digital_outputs(_mask, 0);
@@ -113,6 +114,7 @@ void AP_FETtecOneWire::configuration_update()
             uint16_t smask = _mask;
             _nr_escs_in_bitmask = 0;
 
+            // count the number of user-configured FETtec ESCs in the bitmask parameter
             for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
                 SRV_Channel* c = SRV_Channels::srv_channel(i);
                 if (c == nullptr || (smask & 0x01) == 0x00) {
@@ -128,7 +130,7 @@ void AP_FETtecOneWire::configuration_update()
             // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
             const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
             if (num_active_escs < _nr_escs_in_bitmask) {
-                if ((now-_lastESCScan) > 5000) { //Scan timeout fix here?
+                if ((now -_lastESCScan > 5000) || _lastESCScan == 0) {
                     GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
                     _lastESCScan = now;
                     _scan_active = 0;
