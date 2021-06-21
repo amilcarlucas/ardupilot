@@ -225,6 +225,7 @@ private:
 
     uint32_t _last_config_check_ms;
 #if HAL_WITH_ESC_TELEM
+    float _error_percentage[MOTOR_COUNT_MAX]; ///< Zero-indexed array
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
     uint16_t _sent_msg_count;     ///< number of fast-throttle commands sent by the flight controller
     uint16_t _update_rate_hz;

@@ -635,7 +635,14 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
 {
     _found_escs[esc_id].error_count = current_error_count; //Save the error count to the esc
     uint16_t corrected_error_count = (uint16_t)((uint16_t)_found_escs[esc_id].error_count - (uint16_t)_found_escs[esc_id].error_count_since_overflow); //calculates error difference since last overflow.
-    return (float)corrected_error_count*_crc_error_rate_factor; //calculates percentage
+    float error_count_percentage = (float)corrected_error_count*_crc_error_rate_factor; //calculates percentage
+    _error_percentage[esc_id] = error_count_percentage;
+
+    if (_sent_msg_count == 1599) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f", _error_percentage[0], _error_percentage[1], _error_percentage[2], _error_percentage[3], _error_percentage[4], _error_percentage[5], _error_percentage[6]);
+    }
+
+    return error_count_percentage;
 }
 
 /**
