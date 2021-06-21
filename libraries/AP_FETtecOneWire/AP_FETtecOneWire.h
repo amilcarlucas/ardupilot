@@ -211,7 +211,7 @@ private:
 
     uint8_t _set_full_telemetry_active = 1; //Helper to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
-    int8_t _min_id = MOTOR_COUNT_MAX;
+    int8_t _min_id;
     int8_t _max_id;
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
