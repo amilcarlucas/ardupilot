@@ -192,7 +192,7 @@ private:
     } FETtecOneWireESC_t;
 
     FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
-    uint32_t _lastESCScan;
+    uint32_t _last_scan_ms;
     uint32_t _last_config_update_ms;
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM

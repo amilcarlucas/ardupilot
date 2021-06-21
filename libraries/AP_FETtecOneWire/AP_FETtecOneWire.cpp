@@ -131,9 +131,9 @@ void AP_FETtecOneWire::configuration_update()
             // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
             const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
             if (num_active_escs < _nr_escs_in_bitmask) {
-                if ((now -_lastESCScan > 5000) || _lastESCScan == 0) {
+                if ((now -_last_scan_ms > 5000) || _last_scan_ms == 0) {
                     GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
-                    _lastESCScan = now;
+                    _last_scan_ms = now;
                     _scan_active = 0;
                     _setup_active = 0;
                     _set_full_telemetry_active = 0;
