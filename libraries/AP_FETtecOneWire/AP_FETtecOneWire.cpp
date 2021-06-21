@@ -28,11 +28,12 @@ extern const AP_HAL::HAL& hal;
 
 static constexpr uint32_t FTOW_UART_LOCK_KEY = 0x0FE77EC0;
 static constexpr uint32_t DELAY_TIME_US = 700;
-static constexpr uint32_t RESPONSE_LENGTH = 18;
 static constexpr uint32_t BAUDRATE = 500000;
 static constexpr uint8_t ALL_ID = 0x1F;
+static constexpr uint8_t FRAME_OVERHEAD = 6;
 static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
-static constexpr uint8_t MAX_RECEIVE_LENGTH = 14;
+static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
+static constexpr uint8_t MAX_RESPONSE_LENGTH = FRAME_OVERHEAD + MAX_RECEIVE_LENGTH;
 
 const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
     // @Param: MASK
@@ -240,16 +241,16 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     byte 6 - X = request type, followed by the payload
     byte X+1 = 8bit CRC
     */
-    uint8_t transmit_arr[6+MAX_TRANSMIT_LENGTH] = {0x01, esc_id};
+    uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01, esc_id};
     if (length > MAX_TRANSMIT_LENGTH) {
         length = MAX_TRANSMIT_LENGTH;
     }
-    transmit_arr[4] = length + 6;
+    transmit_arr[4] = length + FRAME_OVERHEAD;
     for (uint8_t i = 0; i < length; i++) {
         transmit_arr[i + 5] = bytes[i];
     }
     transmit_arr[length + 5] = get_crc8(transmit_arr, length + 5); // crc
-    _uart->write_locked(transmit_arr, length + 6, FTOW_UART_LOCK_KEY);
+    _uart->write_locked(transmit_arr, length + FRAME_OVERHEAD, FTOW_UART_LOCK_KEY);
 }
 
 /**
@@ -275,7 +276,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         length = MAX_RECEIVE_LENGTH;
     }
     // look for the real answer
-    if (_uart->available() >= length + 6u) {
+    if (_uart->available() >= length + FRAME_OVERHEAD) {
         // sync to frame start byte
         uint8_t test_frame_start = 0;
         do {
@@ -284,9 +285,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         while (test_frame_start != 0x02 && test_frame_start != 0x03 && _uart->available());
         // copy message
         if (_uart->available() >= length + 5u) {
-            uint8_t receive_buf[6u + MAX_RECEIVE_LENGTH];
+            uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
             receive_buf[0] = test_frame_start;
-            for (uint8_t i = 1; i < length + 6; i++) {
+            for (uint8_t i = 1; i < length + FRAME_OVERHEAD; i++) {
                 receive_buf[i] = _uart->read();
             }
             // empty buffer, we are not expecting any more data now
@@ -298,7 +299,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
                         bytes[i] = receive_buf[5 + i];
                     }
                 } else {
-                    for (uint8_t i = 0; i < length + 6; i++) {
+                    for (uint8_t i = 0; i < length + FRAME_OVERHEAD; i++) {
                         bytes[i] = receive_buf[i];
                     }
                 }
@@ -352,7 +353,7 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 */
 uint8_t AP_FETtecOneWire::scan_escs()
 {
-    uint8_t response[RESPONSE_LENGTH];
+    uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
     if (_scan_active == 0) {
         _scan.delay_loops = 500;
@@ -481,7 +482,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 */
 uint8_t AP_FETtecOneWire::init_escs()
 {
-    uint8_t response[RESPONSE_LENGTH];
+    uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
     if (_setup_active == 0) {
         _init.delay_loops = 0;
@@ -636,7 +637,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 {
     receive_response ret = receive_response::NO_ANSWER_YET;
     if (_id_count > 0) {
-        uint8_t telem[17];
+        uint8_t telem[FRAME_OVERHEAD + 11];
         ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME); 
 
         if (ret == receive_response::ANSWER_VALID) {
