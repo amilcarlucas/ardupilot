@@ -84,9 +84,8 @@ private:
 
     /**
         update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
-        @return true if configuration is OK
     */
-    bool configuration_ok();
+    void configuration_update();
 
     /**
         increment message packet count for every ESC
@@ -196,12 +195,12 @@ private:
 
     FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
     uint32_t _lastESCScan;
+    uint32_t _last_config_update_ms;
     uint32_t _last_send_us;
     float _crc_error_rate_factor;
     uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
     uint16_t _send_msg_count; //counts the messages that are send by fc
-    uint16_t _update_loop_decimator;
     uint16_t _mask;
     uint16_t _update_rate_hz = 400;
     uint8_t _nr_escs_in_bitmask;

@@ -91,24 +91,23 @@ void AP_FETtecOneWire::init()
 
 /**
   update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
-  @return true if configuration is OK
 */
-bool AP_FETtecOneWire::configuration_ok()
+void AP_FETtecOneWire::configuration_update()
 {
-    if (_update_loop_decimator-- == 0) {
-        _update_loop_decimator = 2 * _update_rate_hz; // once every 2 seconds
+    if (!AP::arming().is_armed()) {
 
-        if (!AP::arming().is_armed()) {
-
-            _update_rate_hz = AP::scheduler().get_loop_rate_hz();
+        const uint32_t now = AP_HAL::millis();
+        if (_last_config_update_ms == 0 || now - _last_config_update_ms > 2000) {  // only runs once every 2 seconds
+            _last_config_update_ms = now;
 
             if (!_uart->is_dma_enabled()) {
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
-                return false; // will not work at all without DMA
+                return; // will not work at all without DMA
             }
 
-            // tell SRV_Channels about ESC capabilities
+            // get the user configured expected FETtec ESCs bitmask
             _mask = uint16_t(_motor_mask.get());
+            // tell SRV_Channels about ESC capabilities
             SRV_Channels::set_digital_outputs(_mask, 0);
 
             uint16_t smask = _mask;
@@ -124,24 +123,23 @@ bool AP_FETtecOneWire::configuration_ok()
             }
 
 #if HAL_WITH_ESC_TELEM
+            _update_rate_hz = AP::scheduler().get_loop_rate_hz();
             _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
             // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
             const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
             if (num_active_escs < _nr_escs_in_bitmask) {
-                const uint32_t now = AP_HAL::millis();
                 if ((now-_lastESCScan) > 5000) { //Scan timeout fix here?
                     GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
                     _lastESCScan = now;
                     _scan_active = 0;
                     _setup_active = 0;
                     _set_full_telemetry_active = 0;
-                    return false; // will restart
+                    return; // will restart
                 }
             }
 #endif
         }
     }
-    return true;
 }
 
 void AP_FETtecOneWire::update()
@@ -155,13 +153,8 @@ void AP_FETtecOneWire::update()
         return;
     }
 
-    if (!configuration_ok()) {
-        return;
-    };
-
     // get ESC set points, stop as soon as there is a gap
     uint16_t motor_pwm[MOTOR_COUNT_MAX];
-
     for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
         SRV_Channel* c = SRV_Channels::srv_channel(i);
         if (c == nullptr) {
@@ -188,9 +181,8 @@ void AP_FETtecOneWire::update()
     }
 #endif
 
-
-    uint32_t txSpace =  _uart->txspace(); //Ugly workaround.
-    if (txSpace==511 && !_uart->tx_pending()) { //Ugly workaround.
+    // send motor setpoints to ESCs, and request for telemetry data
+    if (_nr_escs_in_bitmask) {
         escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
     }
 
@@ -199,7 +191,7 @@ void AP_FETtecOneWire::update()
 
     inc_send_msg_count(); // increment message packet count for every ESC
 
-    if (_requested_telemetry_from_esc && tlm_ok==receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
+    if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
         if (_pole_count < 2) { // If Parameter is invalid use 14 Poles
             _pole_count = 14;
         }
@@ -210,6 +202,8 @@ void AP_FETtecOneWire::update()
     }
 #endif
 
+    // now that all real-time tasks have been done, update the configuration if necessary
+    configuration_update();
 }
 
 /**
@@ -663,7 +657,6 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
     initializes the ESCs if not already done.
     sends fast throttle signals if init is complete.
     @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
-    @param telemetry 16bit array where the read telemetry will be stored in.
     @param motorCount the count of motors that should get values send
     @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
 */
