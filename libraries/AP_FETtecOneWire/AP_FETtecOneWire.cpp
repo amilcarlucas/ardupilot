@@ -136,7 +136,6 @@ void AP_FETtecOneWire::configuration_update()
                     _scan_active = 0;
                     _setup_active = 0;
                     _set_full_telemetry_active = 0;
-                    return; // will restart
                 }
             }
 #endif
