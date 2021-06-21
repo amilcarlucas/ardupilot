@@ -276,7 +276,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         length = MAX_RECEIVE_LENGTH;
     }
     // look for the real answer
-    if (_uart->available() >= length + FRAME_OVERHEAD) {
+    const uint8_t raw_length = FRAME_OVERHEAD + length;
+    const uint8_t crc_pos = raw_length-1;
+    if (_uart->available() >= raw_length) {
         // sync to frame start byte
         uint8_t test_frame_start = 0;
         do {
@@ -284,22 +286,22 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         }
         while (test_frame_start != 0x02 && test_frame_start != 0x03 && _uart->available());
         // copy message
-        if (_uart->available() >= length + 5u) {
+        if (_uart->available() >= crc_pos) {
             uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
             receive_buf[0] = test_frame_start;
-            for (uint8_t i = 1; i < length + FRAME_OVERHEAD; i++) {
+            for (uint8_t i = 1; i < raw_length; i++) {
                 receive_buf[i] = _uart->read();
             }
             // empty buffer, we are not expecting any more data now
             _uart->discard_input();
             // check CRC
-            if (get_crc8(receive_buf, length + 5) == receive_buf[length + 5]) {
+            if (get_crc8(receive_buf, crc_pos) == receive_buf[crc_pos]) {
                 if (return_full_frame == return_type::RESPONSE) {
                     for (uint8_t i = 0; i < length; i++) {
                         bytes[i] = receive_buf[5 + i];
                     }
                 } else {
-                    for (uint8_t i = 0; i < length + FRAME_OVERHEAD; i++) {
+                    for (uint8_t i = 0; i < raw_length; i++) {
                         bytes[i] = receive_buf[i];
                     }
                 }
