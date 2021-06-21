@@ -52,19 +52,17 @@ public:
     }
 private:
     static AP_FETtecOneWire *_singleton;
-    bool _initialised;
     AP_HAL::UARTDriver *_uart;
 
-    AP_Int32 _motor_mask;
-    AP_Int8 _pole_count;
-
-    uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
     static constexpr uint8_t MOTOR_COUNT_MAX = ESC_TELEM_MAX_ESCS; /// OneWire supports up-to 25 ESCs, but Ardupilot only supports 12
 #else
     static constexpr uint8_t MOTOR_COUNT_MAX = 12;                 /// OneWire supports up-to 25 ESCs, but Ardupilot only supports 12
 #endif
+    AP_Int32 _motor_mask;
+    AP_Int8 _pole_count;
     uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+    bool _initialised;
 
     enum class return_type : uint8_t
     {
@@ -196,17 +194,19 @@ private:
 #endif
     } FETtecOneWireESC_t;
 
+    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
+    uint32_t _lastESCScan;
+    uint32_t _last_send_us;
+    float _crc_error_rate_factor;
     uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
     uint16_t _send_msg_count; //counts the messages that are send by fc
     uint16_t _update_loop_decimator;
     uint16_t _mask;
-    uint8_t _nr_escs_in_bitmask;
     uint16_t _update_rate_hz = 400;
-    float _crc_error_rate_factor;
+    uint8_t _nr_escs_in_bitmask;
 
     uint8_t _active_esc_ids[MOTOR_COUNT_MAX] = {0};
-    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
     uint8_t _found_escs_count;
     uint8_t _scan_active;
     uint8_t _setup_active;
@@ -222,7 +222,7 @@ private:
     bool _pull_busy;
     uint8_t _tlm_request;
     uint8_t _last_crc;
-    uint32_t _lastESCScan;
+
     enum msg_type
     {
         OW_OK = 0,
@@ -237,18 +237,6 @@ private:
         OW_SET_FAST_COM_LENGTH = 26,
         OW_SET_TLM_TYPE = 27, //1 for alternative telemetry. ESC sends full telem per ESC: Temp, Volt, Current, ERPM, Consumption, CrcErrCount
         OW_SET_LED_TMP_COLOR = 51,
-    };
-
-    enum telem_type
-    {
-        TEMP = 0,
-        VOLT,
-        CURRENT,
-        ERPM,
-        CONSUMPTION,
-        DEBUG1,
-        DEBUG2,
-        DEBUG3
     };
 
     /// presistent scan state data (only used inside scan_escs() function)
