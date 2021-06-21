@@ -183,8 +183,9 @@ void AP_FETtecOneWire::update()
     }
 #endif
 
-    // send motor setpoints to ESCs, and request for telemetry data
+    // will only run after the configuration_update() is run at least once
     if (_nr_escs_in_bitmask) {
+        // send motor setpoints to ESCs, and request for telemetry data
         escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
     }
 
@@ -473,7 +474,6 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
     return _set_full_telemetry_active;
 }
 
-
 /**
     starts all ESCs in bus and prepares them for receiving the fast throttle command should be called until _setup_active >= MOTOR_COUNT_MAX
     @return the current used ID
@@ -595,7 +595,7 @@ uint8_t AP_FETtecOneWire::init_escs()
     return _init.active_id;
 }
 
-
+#if HAL_WITH_ESC_TELEM
 /**
     increment message packet count for every ESC
 */
@@ -623,7 +623,6 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
     return (float)corrected_error_count*_crc_error_rate_factor; //calculates percentage
 }
 
-#if HAL_WITH_ESC_TELEM
 /**
     checks if the requested telemetry is available.
     @param t telemetry datastructure where the read telemetry will be stored in.

@@ -61,8 +61,6 @@ private:
 #endif
     AP_Int32 _motor_mask;
     AP_Int8 _pole_count;
-    uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
-    bool _initialised;
 
     enum class return_type : uint8_t
     {
@@ -86,19 +84,6 @@ private:
         update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
     */
     void configuration_update();
-
-    /**
-        increment message packet count for every ESC
-    */
-    void inc_send_msg_count();
-
-    /**
-        calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
-        @param esc_id id of ESC, that the error is calculated for
-        @param esc_error_count the error count given by the esc
-        @return the error in percent
-    */
-    float calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t esc_error_count);
 
     /**
         generates used 8 bit CRC for arrays
@@ -162,6 +147,19 @@ private:
 
 #if HAL_WITH_ESC_TELEM
     /**
+        increment message packet count for every ESC
+    */
+    void inc_send_msg_count();
+
+    /**
+        calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
+        @param esc_id id of ESC, that the error is calculated for
+        @param esc_error_count the error count given by the esc
+        @return the error in percent
+    */
+    float calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t esc_error_count);
+
+    /**
         checks if the requested telemetry is available.
         @param t telemetry datastructure where the read telemetry will be stored in.
         @param centi_erpm 16bit centi-eRPM value returned from the ESC
@@ -197,12 +195,14 @@ private:
     uint32_t _lastESCScan;
     uint32_t _last_config_update_ms;
     uint32_t _last_send_us;
+#if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor;
     uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
     uint16_t _send_msg_count; //counts the messages that are send by fc
-    uint16_t _mask;
     uint16_t _update_rate_hz = 400;
+#endif
+    uint16_t _mask;
     uint8_t _nr_escs_in_bitmask;
 
     uint8_t _active_esc_ids[MOTOR_COUNT_MAX] = {0};
@@ -217,10 +217,12 @@ private:
     int8_t _max_id;
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
-    bool _pull_success;
-    bool _pull_busy;
+    uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     uint8_t _tlm_request;
     uint8_t _last_crc;
+    bool _initialised;
+    bool _pull_success;
+    bool _pull_busy;
 
     enum msg_type
     {
