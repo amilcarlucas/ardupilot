@@ -129,7 +129,7 @@ void AP_FETtecOneWire::configuration_update()
             _update_rate_hz = AP::scheduler().get_loop_rate_hz();
             _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
             // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-            const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs();
+            const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
             if (num_active_escs < _nr_escs_in_bitmask) {
                 if ((now -_last_scan_ms > 5000) || _last_scan_ms == 0) {
                     GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
