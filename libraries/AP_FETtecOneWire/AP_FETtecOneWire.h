@@ -76,7 +76,7 @@ private:
     };
 
     /**
-        initialize the serial port
+        initialize the serial port, scan the OneWire bus, setup the found ESCs
     */
     void init();
 
@@ -171,8 +171,6 @@ private:
 #endif
 
     /**
-        scans for ESCs if not already done.
-        initializes the ESCs if not already done.
         sends fast throttle signals if init is complete.
         @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
         @param motor_count the count of motors that should get values send
@@ -217,6 +215,7 @@ private:
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     bool _active_esc_ids[MOTOR_COUNT_MAX];
+    bool _initialised;
     bool _uart_initialised;
     bool _pull_success;
     bool _pull_busy;

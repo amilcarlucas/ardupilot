@@ -76,19 +76,69 @@ AP_FETtecOneWire::AP_FETtecOneWire()
 }
 
 /**
-  initialize the serial port
+  initialize the serial port, scan the OneWire bus, setup the found ESCs
 */
 void AP_FETtecOneWire::init()
 {
-    AP_SerialManager& serial_manager = AP::serialmanager();
-    _uart = serial_manager.find_serial(AP_SerialManager::SerialProtocol_FETtecOneWire, 0);
-    if (_uart) {
-        _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
-        _uart->set_unbuffered_writes(true);
-        _uart->set_blocking_writes(false);
-        _uart->begin(BAUDRATE);
-        _uart_initialised = true;
+    if (!_uart_initialised) {
+        AP_SerialManager& serial_manager = AP::serialmanager();
+        _uart = serial_manager.find_serial(AP_SerialManager::SerialProtocol_FETtecOneWire, 0);
+        if (_uart) {
+            _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
+            _uart->set_unbuffered_writes(true);
+            _uart->set_blocking_writes(false);
+            _uart->begin(BAUDRATE);
+            _uart_initialised = true;
+        }
     }
+
+    if (_uart == nullptr) {
+        return;
+    }
+
+    const uint32_t now = AP_HAL::micros();
+
+    if (_scan_active < MOTOR_COUNT_MAX) {
+        if (now - _last_send_us < DELAY_TIME_US) {
+            // scan should not be done too fast, as the bootloader has some message timing requirements.
+            return;
+        } else {
+            _last_send_us = now;
+        }
+        // scan for all ESCs in OneWire bus
+        _scan_active = scan_escs();
+        return;
+    }
+
+    if (_setup_active < MOTOR_COUNT_MAX) {
+        if (now - _last_send_us < DELAY_TIME_US) {
+            // setup should not be done too fast, as the bootloader has some message timing requirements.
+            return;
+        } else {
+            _last_send_us = now;
+        }
+        if (_found_escs_count == 0) {
+            _scan_active = 0;  // no ESC has been found yet, start scanning again
+        } else {
+            // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
+            _setup_active = init_escs();
+        }
+        return;
+    }
+
+    if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) {
+        if (now - _last_send_us < DELAY_TIME_US) {
+            // telemetry mode should not be done too fast, as the bootloader has some message timing requirements.
+            return;
+        } else {
+            _last_send_us = now;
+        }
+        // set telemetry to alternative mode (full telemetry from a single ESC, in a single response packet)
+        _set_full_telemetry_active = set_full_telemetry(1);
+        return;
+    }
+
+    _initialised = true;
 }
 
 /**
@@ -137,6 +187,7 @@ void AP_FETtecOneWire::configuration_update()
                     _scan_active = 0;
                     _setup_active = 0;
                     _set_full_telemetry_active = 1;
+                    _initialised = 0;
                 }
             }
 #endif
@@ -147,7 +198,7 @@ void AP_FETtecOneWire::configuration_update()
 void AP_FETtecOneWire::update()
 {
 
-    if (!_uart_initialised) {
+    if (!_initialised) {
         init();
     }
 
@@ -475,8 +526,8 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 
             _set_full_telemetry_retry_count++;
             if (_set_full_telemetry_retry_count>128) { //It is important to have the correct telemetry set so start over if there is something wrong.
-                _pull_busy=false;
-                _set_full_telemetry_active=1;
+                _pull_busy = false;
+                _set_full_telemetry_active = 1;
             }
         }
     } else { //If there is no ESC detected skip it.
@@ -665,8 +716,6 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 #endif
 
 /**
-    scans for ESCs if not already done.
-    initializes the ESCs if not already done.
     sends fast throttle signals if init is complete.
     @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
     @param motorCount the count of motors that should get values send
@@ -674,96 +723,68 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 */
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t motorCount, const uint8_t tlm_request)
 {
-    // init should not be done too fast. as at last the bootloader has some timing requirements with messages. so loop delays must fit more or less
-    if (_scan_active < MOTOR_COUNT_MAX || _setup_active < MOTOR_COUNT_MAX || _set_full_telemetry_active < MOTOR_COUNT_MAX ) {
-        const uint32_t now = AP_HAL::micros();
-        if (now - _last_send_us < DELAY_TIME_US) {
-            return;
-        } else {
-            _last_send_us = now;
-        }
+    if (_id_count > 0) {
+        uint8_t fast_throttle_command[36] = { };
+        uint8_t act_throttle_command = 0;
 
-        if (_scan_active < MOTOR_COUNT_MAX) {
-            // scan for all ESCs in onewire bus
-            _scan_active = scan_escs();
+        // byte 1:
+        // bit 0,1,2,3 = ESC ID, Bit 4 = first bit of first ESC (11bit)signal, bit 5,6,7 = frame header
+        // so AAAABCCC
+        // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
+        // B = first bit from first throttle signal
+        // C = frame header
+        fast_throttle_command[0] = (tlm_request << 4);
+        fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
+        fast_throttle_command[0] |= 0x01;
+        // byte 2:
+        // AAABBBBB
+        // A = next 3 bits from (11bit)throttle signal
+        // B = 5bit target ID
+        fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
+        fast_throttle_command[1] |= ALL_ID;
 
-        } else if (_setup_active < MOTOR_COUNT_MAX) {
-            if (_found_escs_count == 0) {
-                _scan_active = 0;
-            } else {
-                // check if in bootloader, start ESCs FW if they are and prepare fast throttle command
-                _setup_active = init_escs();
-            }
-
-        }
-        else if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) { //Set telemetry to alternative mode
-            _set_full_telemetry_active = set_full_telemetry(1);
-        }
-    } else {
-        //send fast throttle signals
-        if (_id_count > 0) {
-            uint8_t fast_throttle_command[36] = { };
-            uint8_t act_throttle_command = 0;
-
-            // byte 1:
-            // bit 0,1,2,3 = ESC ID, Bit 4 = first bit of first ESC (11bit)signal, bit 5,6,7 = frame header
-            // so AAAABCCC
-            // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request. 
-            // B = first bit from first throttle signal
-            // C = frame header
-            fast_throttle_command[0] = (tlm_request << 4);
-            fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
-            fast_throttle_command[0] |= 0x01;
-            // byte 2:
-            // AAABBBBB
-            // A = next 3 bits from (11bit)throttle signal
-            // B = 5bit target ID
-            fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
-            fast_throttle_command[1] |= ALL_ID;
-
-            // following bytes are the rest 7 bit of the first (11bit) throttle signal, and all bit from all other signals, followed by the CRC byte
-            uint8_t bits_left_from_command = 7;
-            uint8_t act_byte = 2;
-            uint8_t bits_from_byte_left = 8;
-            uint8_t bits_to_add_left = (12 + (((_max_id - _min_id) + 1) * 11)) - 16;
-            while (bits_to_add_left > 0) {
-                if (bits_from_byte_left >= bits_left_from_command) {
-                    fast_throttle_command[act_byte] |=
-                            (motor_values[act_throttle_command] & ((1 << bits_left_from_command) - 1))
-                                    << (bits_from_byte_left - bits_left_from_command);
-                    bits_to_add_left -= bits_left_from_command;
-                    bits_from_byte_left -= bits_left_from_command;
-                    act_throttle_command++;
-                    bits_left_from_command = 11;
-                    if (bits_to_add_left == 0) {
-                        act_byte++;
-                        bits_from_byte_left = 8;
-                    }
-                } else {
-                    fast_throttle_command[act_byte] |=
-                            (motor_values[act_throttle_command] >> (bits_left_from_command - bits_from_byte_left))
-                                    & ((1 << bits_from_byte_left) - 1);
-                    bits_to_add_left -= bits_from_byte_left;
-                    bits_left_from_command -= bits_from_byte_left;
+        // following bytes are the rest 7 bit of the first (11bit) throttle signal, and all bit from all other signals, followed by the CRC byte
+        uint8_t bits_left_from_command = 7;
+        uint8_t act_byte = 2;
+        uint8_t bits_from_byte_left = 8;
+        uint8_t bits_to_add_left = (12 + (((_max_id - _min_id) + 1) * 11)) - 16;
+        while (bits_to_add_left > 0) {
+            if (bits_from_byte_left >= bits_left_from_command) {
+                fast_throttle_command[act_byte] |=
+                        (motor_values[act_throttle_command] & ((1 << bits_left_from_command) - 1))
+                                << (bits_from_byte_left - bits_left_from_command);
+                bits_to_add_left -= bits_left_from_command;
+                bits_from_byte_left -= bits_left_from_command;
+                act_throttle_command++;
+                bits_left_from_command = 11;
+                if (bits_to_add_left == 0) {
                     act_byte++;
                     bits_from_byte_left = 8;
-                    if (bits_left_from_command == 0) {
-                        act_throttle_command++;
-                        bits_left_from_command = 11;
-                    }
+                }
+            } else {
+                fast_throttle_command[act_byte] |=
+                        (motor_values[act_throttle_command] >> (bits_left_from_command - bits_from_byte_left))
+                                & ((1 << bits_from_byte_left) - 1);
+                bits_to_add_left -= bits_from_byte_left;
+                bits_left_from_command -= bits_from_byte_left;
+                act_byte++;
+                bits_from_byte_left = 8;
+                if (bits_left_from_command == 0) {
+                    act_throttle_command++;
+                    bits_left_from_command = 11;
                 }
             }
-
-            fast_throttle_command[_fast_throttle_byte_count - 1] = get_crc8(
-                    fast_throttle_command, _fast_throttle_byte_count - 1);
-
-            // No command was yet sent, so no reply is expected
-            // So all information on the receive buffer is either garbage or noise, discard it
-            _uart->discard_input();
-
-            // send throttle command to all configured ESCs in a single packet transfer
-            _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
         }
+
+        fast_throttle_command[_fast_throttle_byte_count - 1] =
+            get_crc8(fast_throttle_command, _fast_throttle_byte_count - 1);
+
+        // No command was yet sent, so no reply is expected
+        // So all information on the receive buffer is either garbage or noise, discard it
+        _uart->discard_input();
+
+        // send throttle command to all configured ESCs in a single packet transfer
+        _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
     }
 }
 #endif  // HAL_AP_FETTEC_ONEWIRE_ENABLED
