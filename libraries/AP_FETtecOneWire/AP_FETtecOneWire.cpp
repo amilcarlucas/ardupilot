@@ -753,12 +753,15 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
                     }
                 }
             }
-            // empty buffer
-            _uart->discard_input();
 
-            // send throttle signal
             fast_throttle_command[_fast_throttle_byte_count - 1] = get_crc8(
                     fast_throttle_command, _fast_throttle_byte_count - 1);
+
+            // No command was yet sent, so no reply is expected
+            // So all information on the receive buffer is either garbage or noise, discard it
+            _uart->discard_input();
+
+            // send throttle command to all configured ESCs in a single packet transfer
             _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
         }
     }
