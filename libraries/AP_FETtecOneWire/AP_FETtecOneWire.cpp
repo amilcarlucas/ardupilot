@@ -279,11 +279,19 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     const uint32_t raw_length = FRAME_OVERHEAD + length;
     if (_uart->available() >= raw_length) {
         // sync to frame start byte
-        uint8_t test_frame_start = 0;
+        uint8_t test_frame_start;
+        uint8_t head = 0;
         do {
             test_frame_start = _uart->read();
+            if (test_frame_start == 0x02 || test_frame_start == 0x03) {
+                break;
+            }
+            if (++head > 5) {
+                _uart->discard_input();
+                return receive_response::NO_ANSWER_YET;
+            }
         }
-        while (test_frame_start != 0x02 && test_frame_start != 0x03 && _uart->available());
+        while (_uart->available());
         // copy message
         if (_uart->available() >= raw_length-1u) {
             uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
