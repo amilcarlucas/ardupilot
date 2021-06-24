@@ -46,6 +46,7 @@ public:
 
     static const struct AP_Param::GroupInfo var_info[];
 
+    /// periodicaly called from SRV_Channels::push()
     void update();
     static AP_FETtecOneWire *get_singleton() {
         return _singleton;
@@ -194,32 +195,32 @@ private:
     uint32_t _last_config_update_ms;
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
-    float _crc_error_rate_factor;
-    uint16_t _error_count[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs
-    uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; //saves the error counter from the ESCs to pass the overflow
-    uint16_t _send_msg_count; //counts the messages that are send by fc
+    float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
+    uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs
+    uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; ///< error counter from the ESCs to pass the overflow
+    uint16_t _send_msg_count; ///< number of fast-trottle commands send by the flight controller
     uint16_t _update_rate_hz;
 #endif
     uint16_t _mask;
-    uint8_t _nr_escs_in_bitmask;
+    uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
 
-    uint8_t _found_escs_count;
+    uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus
     uint8_t _scan_active;
     uint8_t _setup_active;
 #if HAL_WITH_ESC_TELEM
-    uint8_t _set_full_telemetry_active = 1; //Helper to set alternative TLM for every ESC
+    uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
 #endif
     int8_t _min_id;
     int8_t _max_id;
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
-    uint8_t _requested_telemetry_from_esc; /// the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+    uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     bool _active_esc_ids[MOTOR_COUNT_MAX];
-    bool _initialised;
-    bool _uart_initialised;
-    bool _pull_success;
-    bool _pull_busy;
+    bool _initialised;       ///< device driver and ESCs are fully initialized
+    bool _uart_initialised;  ///< serial UART is fully initialized
+    bool _pull_success;      ///< request sent and reply sucessfuly received
+    bool _pull_busy;         ///< request-reply transaction is busy
 
     enum msg_type
     {
@@ -257,7 +258,7 @@ private:
         uint8_t set_fast_command[4] = {OW_SET_FAST_COM_LENGTH, 0, 0, 0};
     } _init;
 
-    uint8_t _response_length[OW_SET_TLM_TYPE+1]; // OW_SET_LED_TMP_COLOR is ignored here
+    uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
 
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED

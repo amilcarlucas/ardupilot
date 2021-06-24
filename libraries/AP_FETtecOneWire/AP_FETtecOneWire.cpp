@@ -97,26 +97,22 @@ void AP_FETtecOneWire::init()
     }
 
     const uint32_t now = AP_HAL::micros();
+    if (now - _last_send_us < DELAY_TIME_US) {
+        // scan_escs(), init_escs(), and set_full_telemetry() are to be called periodicaly multiple times
+        // but the call period must to be bigger than DELAY_TIME_US,
+        // as the bootloader has some message timing requirements.
+        return;
+    } else {
+        _last_send_us = now;
+    }
 
     if (_scan_active < MOTOR_COUNT_MAX) {
-        if (now - _last_send_us < DELAY_TIME_US) {
-            // scan should not be done too fast, as the bootloader has some message timing requirements.
-            return;
-        } else {
-            _last_send_us = now;
-        }
         // scan for all ESCs in OneWire bus
         _scan_active = scan_escs();
         return;
     }
 
     if (_setup_active < MOTOR_COUNT_MAX) {
-        if (now - _last_send_us < DELAY_TIME_US) {
-            // setup should not be done too fast, as the bootloader has some message timing requirements.
-            return;
-        } else {
-            _last_send_us = now;
-        }
         if (_found_escs_count == 0) {
             _scan_active = 0;  // no ESC has been found yet, start scanning again
         } else {
@@ -128,12 +124,6 @@ void AP_FETtecOneWire::init()
 
 #if HAL_WITH_ESC_TELEM
     if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) {
-        if (now - _last_send_us < DELAY_TIME_US) {
-            // telemetry mode should not be done too fast, as the bootloader has some message timing requirements.
-            return;
-        } else {
-            _last_send_us = now;
-        }
         // set telemetry to alternative mode (full telemetry from a single ESC, in a single response packet)
         _set_full_telemetry_active = set_full_telemetry(1);
         return;
@@ -195,71 +185,6 @@ void AP_FETtecOneWire::configuration_update()
 #endif
         }
     }
-}
-
-void AP_FETtecOneWire::update()
-{
-
-    if (!_initialised) {
-        init();
-    }
-
-    if (_uart == nullptr) {
-        return;
-    }
-
-    // get ESC set points, stop as soon as there is a gap
-    uint16_t motor_pwm[MOTOR_COUNT_MAX];
-    for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
-        SRV_Channel* c = SRV_Channels::srv_channel(i);
-        if (c == nullptr) {
-            break;
-        }
-        motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
-    }
-
-#if HAL_WITH_ESC_TELEM
-    // receive and decode the telemetry data from one ESC
-    // but do not process it any further to reduce timing jitter in the escs_set_values() function call
-    TelemetryData t {};
-    int16_t centi_erpm = 0;    // initialize to prevent false positive error: ‘centi_erpm’ may be used uninitialized in this function
-    uint16_t tx_err_count = 0; // initialize to prevent false positive error: ‘tx_err_count’ may be used uninitialized in this function
-    receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
-    uint8_t tlm_from_id = 0;
-    if (_requested_telemetry_from_esc) {
-        tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
-    }
-    if (_requested_telemetry_from_esc == _found_escs_count) { //if found esc number is reached restart request counter
-        _requested_telemetry_from_esc = 1; // restart from the first ESC
-    } else {
-        _requested_telemetry_from_esc++;
-    }
-#endif
-
-    // will only run after the configuration_update() is run at least once
-    if (_nr_escs_in_bitmask) {
-        // send motor setpoints to ESCs, and request for telemetry data
-        escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
-
-#if HAL_WITH_ESC_TELEM
-        // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
-
-        inc_send_msg_count(); // increment message packet count for every ESC
-
-        if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
-            if (_pole_count < 2) { // If Parameter is invalid use 14 Poles
-                _pole_count = 14;
-            }
-            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
-            update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
-
-            update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
-        }
-#endif
-    }
-
-    // now that all real-time tasks have been done, update the configuration if necessary
-    configuration_update();
 }
 
 /**
@@ -790,5 +715,79 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         // send throttle commands to all configured ESCs in a single packet transfer
         _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
     }
+}
+
+/// periodicaly called from SRV_Channels::push()
+void AP_FETtecOneWire::update()
+{
+    if (!_initialised) {
+        init();
+        return; // the rest of this function can only run after fully inited
+    }
+
+    if (_uart == nullptr) {
+        return; // no serial port available, so nothing to do here
+    }
+
+    // get ESC set points, stop as soon as there is a gap
+    uint16_t motor_pwm[MOTOR_COUNT_MAX];
+    for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
+        SRV_Channel* c = SRV_Channels::srv_channel(i);
+        if (c == nullptr) {
+            break;
+        }
+        motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
+    }
+
+#if HAL_WITH_ESC_TELEM
+    // receive and decode the telemetry data from one ESC
+    // but do not process it any further to reduce timing jitter in the escs_set_values() function call
+    TelemetryData t {};
+    int16_t centi_erpm = 0;    // initialize to prevent false positive error: ‘centi_erpm’ may be used uninitialized in this function
+    uint16_t tx_err_count = 0; // initialize to prevent false positive error: ‘tx_err_count’ may be used uninitialized in this function
+    receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
+    uint8_t tlm_from_id = 0;
+    if (_requested_telemetry_from_esc) {
+        tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
+    }
+    if (_nr_escs_in_bitmask) {
+        if (_requested_telemetry_from_esc == _found_escs_count) { //if found esc number is reached restart request counter
+            _requested_telemetry_from_esc = 1; // restart from the first ESC
+        } else {
+            _requested_telemetry_from_esc++;
+        }
+    }
+#endif
+
+    // will only run after the configuration_update() is run at least once
+    if (_nr_escs_in_bitmask) {
+        // send motor setpoints to ESCs, and request for telemetry data
+        escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
+
+#if HAL_WITH_ESC_TELEM
+        // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
+
+        inc_send_msg_count(); // increment message packet count for every ESC
+
+        if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
+            if (_pole_count < 2) { // if user set parameter is invalid use 14 Poles
+                _pole_count = 14;
+            }
+            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
+            update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
+
+            update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
+        }
+#endif
+    }
+
+    // Now that all real-time tasks above have been done, update the configuration if necessary.
+    // Note:
+    //   The first time the update() function gets run after _initialised is true none of the
+    //   above real-time tasks run because _nr_escs_in_bitmask will still be zero.
+    //   The configuration_update() function will update that the first time it is called.
+    //   After that the next invocation of the update() task will fully run, and the motors will start
+    //   getting trottle values.
+    configuration_update();
 }
 #endif  // HAL_AP_FETTEC_ONEWIRE_ENABLED
