@@ -138,6 +138,7 @@ private:
     */
     uint8_t init_escs();
 
+#if HAL_WITH_ESC_TELEM
     /**
         sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
         @param active if full telemetry should be used
@@ -145,7 +146,6 @@ private:
     */
     uint8_t set_full_telemetry(uint8_t active);
 
-#if HAL_WITH_ESC_TELEM
     /**
         increment message packet count for every ESC
     */
@@ -206,9 +206,10 @@ private:
     uint8_t _found_escs_count;
     uint8_t _scan_active;
     uint8_t _setup_active;
-
+#if HAL_WITH_ESC_TELEM
     uint8_t _set_full_telemetry_active = 1; //Helper to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
+#endif
     int8_t _min_id;
     int8_t _max_id;
     uint8_t _id_count;

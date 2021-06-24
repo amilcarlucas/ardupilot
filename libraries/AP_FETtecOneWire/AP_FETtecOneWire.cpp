@@ -126,6 +126,7 @@ void AP_FETtecOneWire::init()
         return;
     }
 
+#if HAL_WITH_ESC_TELEM
     if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) {
         if (now - _last_send_us < DELAY_TIME_US) {
             // telemetry mode should not be done too fast, as the bootloader has some message timing requirements.
@@ -137,6 +138,7 @@ void AP_FETtecOneWire::init()
         _set_full_telemetry_active = set_full_telemetry(1);
         return;
     }
+#endif
 
     _initialised = true;
 }
@@ -505,39 +507,6 @@ uint8_t AP_FETtecOneWire::scan_escs()
 }
 
 /**
-    sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
-    @return returns the response code
-*/
-uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
-{
-    if (_active_esc_ids[_set_full_telemetry_active]) { //If ESC is detected at this ID
-        uint8_t response[1];
-        uint8_t request[2];
-        request[0] = OW_SET_TLM_TYPE;
-        request[1] = active; //Alternative Tlm => 1, normal TLM => 0
-        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE, 2);
-        if (pull_response) {
-            if(response[0] == OW_OK) {//Ok received or max retries reached.
-                _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
-                _set_full_telemetry_retry_count = 0; //Reset retry count for new ESC ID
-            } else {
-                _set_full_telemetry_retry_count++; //No OK received, increase retry count
-            }
-        } else {
-
-            _set_full_telemetry_retry_count++;
-            if (_set_full_telemetry_retry_count > 128) { //It is important to have the correct telemetry set so start over if there is something wrong.
-                _pull_busy = false;
-                _set_full_telemetry_active = 1;
-            }
-        }
-    } else { //If there is no ESC detected skip it.
-        _set_full_telemetry_active++;
-    }
-    return _set_full_telemetry_active;
-}
-
-/**
     starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _setup_active >= MOTOR_COUNT_MAX
     @return the current used ID
 */
@@ -659,6 +628,39 @@ uint8_t AP_FETtecOneWire::init_escs()
 }
 
 #if HAL_WITH_ESC_TELEM
+/**
+    sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
+    @return returns the response code
+*/
+uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
+{
+    if (_active_esc_ids[_set_full_telemetry_active]) { //If ESC is detected at this ID
+        uint8_t response[1];
+        uint8_t request[2];
+        request[0] = OW_SET_TLM_TYPE;
+        request[1] = active; //Alternative Tlm => 1, normal TLM => 0
+        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE, 2);
+        if (pull_response) {
+            if(response[0] == OW_OK) {//Ok received or max retries reached.
+                _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
+                _set_full_telemetry_retry_count = 0; //Reset retry count for new ESC ID
+            } else {
+                _set_full_telemetry_retry_count++; //No OK received, increase retry count
+            }
+        } else {
+
+            _set_full_telemetry_retry_count++;
+            if (_set_full_telemetry_retry_count > 128) { //It is important to have the correct telemetry set so start over if there is something wrong.
+                _pull_busy = false;
+                _set_full_telemetry_active = 1;
+            }
+        }
+    } else { //If there is no ESC detected skip it.
+        _set_full_telemetry_active++;
+    }
+    return _set_full_telemetry_active;
+}
+
 /**
     increment message packet count for every ESC
 */
