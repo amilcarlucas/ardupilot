@@ -160,7 +160,7 @@ private:
     float calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t esc_error_count);
 
     /**
-        checks if the requested telemetry is available.
+        if init is complete checks if the requested telemetry is available.
         @param t telemetry datastructure where the read telemetry will be stored in.
         @param centi_erpm 16bit centi-eRPM value returned from the ESC
         @param tx_err_count Ardupilot->ESC communication CRC error counter
@@ -171,8 +171,8 @@ private:
 #endif
 
     /**
-        sends fast throttle signals if init is complete.
-        @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
+        if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
+        @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
         @param motor_count the count of motors that should get values send
         @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     */

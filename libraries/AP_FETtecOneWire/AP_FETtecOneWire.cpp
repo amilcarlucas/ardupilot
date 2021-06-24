@@ -331,13 +331,14 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     if (_uart->available() >= raw_length) {
         // sync to frame start byte
         uint8_t test_frame_start;
-        uint8_t head = 0;
+        uint8_t head = 0; // nr of attempts at finding the frame start byte
         do {
             test_frame_start = _uart->read();
             if (test_frame_start == 0x02 || test_frame_start == 0x03) {
-                break;
+                break; // frame start byte detected, continue decoding the rest of the response
             }
             if (++head > 5) {
+                // too many attempts at finding the frame start byte failed
                 _uart->discard_input();
                 return receive_response::NO_ANSWER_YET;
             }
@@ -518,14 +519,14 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
         if (pull_response) {
             if(response[0] == OW_OK) {//Ok received or max retries reached.
                 _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
-                _set_full_telemetry_retry_count=0; //Reset retry count for new ESC ID
+                _set_full_telemetry_retry_count = 0; //Reset retry count for new ESC ID
             } else {
                 _set_full_telemetry_retry_count++; //No OK received, increase retry count
             }
         } else {
 
             _set_full_telemetry_retry_count++;
-            if (_set_full_telemetry_retry_count>128) { //It is important to have the correct telemetry set so start over if there is something wrong.
+            if (_set_full_telemetry_retry_count > 128) { //It is important to have the correct telemetry set so start over if there is something wrong.
                 _pull_busy = false;
                 _set_full_telemetry_active = 1;
             }
@@ -686,7 +687,7 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
 }
 
 /**
-    checks if the requested telemetry is available.
+    if init is complete checks if the requested telemetry is available.
     @param t telemetry datastructure where the read telemetry will be stored in.
     @param centi_erpm 16bit centi-eRPM value returned from the ESC
     @param tx_err_count Ardupilot->ESC communication CRC error counter
@@ -698,7 +699,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
     receive_response ret = receive_response::NO_ANSWER_YET;
     if (_id_count > 0) {
         uint8_t telem[FRAME_OVERHEAD + 11];
-        ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME); 
+        ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME);
 
         if (ret == receive_response::ANSWER_VALID) {
             tlm_from_id = (uint8_t)telem[1];
@@ -716,8 +717,8 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 #endif
 
 /**
-    sends fast throttle signals if init is complete.
-    @param motor_values a 16bit array containing the throttle signals that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
+    if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
+    @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
     @param motorCount the count of motors that should get values send
     @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
 */
@@ -728,14 +729,15 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         uint8_t act_throttle_command = 0;
 
         // byte 1:
-        // bit 0,1,2,3 = ESC ID, Bit 4 = first bit of first ESC (11bit)signal, bit 5,6,7 = frame header
+        // bit 0,1,2,3 = ESC ID, Bit 4 = MSB (11bit) of first ESC throttle value, bit 5,6,7 = frame header
         // so AAAABCCC
         // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
-        // B = first bit from first throttle signal
+        // B = MSB from first throttle value
         // C = frame header
         fast_throttle_command[0] = (tlm_request << 4);
         fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
         fast_throttle_command[0] |= 0x01;
+
         // byte 2:
         // AAABBBBB
         // A = next 3 bits from (11bit)throttle signal
@@ -743,7 +745,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
         fast_throttle_command[1] |= ALL_ID;
 
-        // following bytes are the rest 7 bit of the first (11bit) throttle signal, and all bit from all other signals, followed by the CRC byte
+        // following bytes are the rest 7 bit of the first (11bit) throttle signal, and all bit from all other values, followed by the CRC byte
         uint8_t bits_left_from_command = 7;
         uint8_t act_byte = 2;
         uint8_t bits_from_byte_left = 8;
@@ -779,11 +781,11 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         fast_throttle_command[_fast_throttle_byte_count - 1] =
             get_crc8(fast_throttle_command, _fast_throttle_byte_count - 1);
 
-        // No command was yet sent, so no reply is expected
-        // So all information on the receive buffer is either garbage or noise, discard it
+        // No command was yet sent, so no reply is expected and all information
+        // on the receive buffer is either garbage or noise. Discard it
         _uart->discard_input();
 
-        // send throttle command to all configured ESCs in a single packet transfer
+        // send throttle commands to all configured ESCs in a single packet transfer
         _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
     }
 }
