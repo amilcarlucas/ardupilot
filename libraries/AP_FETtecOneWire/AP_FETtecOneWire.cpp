@@ -93,7 +93,7 @@ void AP_FETtecOneWire::init()
     }
 
     if (_uart == nullptr) {
-        return;
+        return; // no serial port available, so nothing to do here
     }
 
     const uint32_t now = AP_HAL::micros();
@@ -664,12 +664,11 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
 {
     if (_id_count > 0) {
         // 8  bits OneWire Header
-        // 5  bits telemetry request
-        // 16 bits bootloader
+        // 4  bits telemetry request
         // 11 bits per ESC
         // 8  bits CRC
         // 7  dummy for rounding up the division by 8
-        uint8_t fast_throttle_command[(8+5+16+(11*MOTOR_COUNT_MAX)+8+7)/8] = { 0 };
+        uint8_t fast_throttle_command[(8+4+(11*MOTOR_COUNT_MAX)+8+7)/8] = { 0 };
         uint8_t act_throttle_command = 0;
 
         // byte 1:
@@ -678,18 +677,19 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
         // B = MSB from first throttle value
         // C = frame header
-        fast_throttle_command[0] = (tlm_request << 4);
+        fast_throttle_command[0] = tlm_request << 4;
         fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
         fast_throttle_command[0] |= 0x01;
 
         // byte 2:
         // AAABBBBB
-        // A = next 3 bits from (11bit) throttle signal
+        // A = next 3 bits from (11bit) throttle value
         // B = 5bit target ID
         fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
         fast_throttle_command[1] |= ALL_ID;
 
-        // following bytes are the rest 7 bit of the first (11bit) throttle signal, and all bit from all other values, followed by the CRC byte
+        // following bytes are the rest 7 bit of the first (11bit) throttle value,
+        // and all bits from all other values, followed by the CRC byte
         uint8_t bits_left_from_command = 7;
         uint8_t act_byte = 2;
         uint8_t bits_from_byte_left = 8;
