@@ -27,7 +27,6 @@
 
 extern const AP_HAL::HAL& hal;
 
-static constexpr uint32_t FTOW_UART_LOCK_KEY = 0x0FE77EC0;
 static constexpr uint32_t DELAY_TIME_US = 700;
 static constexpr uint32_t BAUDRATE = 500000;
 static constexpr uint8_t ALL_ID = 0x1F;
@@ -241,7 +240,7 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
         transmit_arr[i + 5] = bytes[i];
     }
     transmit_arr[length + 5] = get_crc8(transmit_arr, length + 5); // crc
-    _uart->write_locked(transmit_arr, length + FRAME_OVERHEAD, FTOW_UART_LOCK_KEY);
+    _uart->write(transmit_arr, length + FRAME_OVERHEAD);
 }
 
 /**
@@ -735,7 +734,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         _uart->discard_input();
 
         // send throttle commands to all configured ESCs in a single packet transfer
-        _uart->write_locked(fast_throttle_command, _fast_throttle_byte_count, FTOW_UART_LOCK_KEY);
+        _uart->write(fast_throttle_command, _fast_throttle_byte_count);
     }
 }
 
