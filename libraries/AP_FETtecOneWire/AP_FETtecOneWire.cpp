@@ -662,7 +662,13 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t motorCount, const uint8_t tlm_request)
 {
     if (_id_count > 0) {
-        uint8_t fast_throttle_command[36] = { };
+        // 8  bits OneWire Header
+        // 5  bits telemetry request
+        // 16 bits bootloader
+        // 11 bits per ESC
+        // 8  bits CRC
+        // 7  dummy for rounding up the division by 8
+        uint8_t fast_throttle_command[(8+5+16+(11*MOTOR_COUNT_MAX)+8+7)/8] = { 0 };
         uint8_t act_throttle_command = 0;
 
         // byte 1:
@@ -677,7 +683,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
 
         // byte 2:
         // AAABBBBB
-        // A = next 3 bits from (11bit)throttle signal
+        // A = next 3 bits from (11bit) throttle signal
         // B = 5bit target ID
         fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
         fast_throttle_command[1] |= ALL_ID;
