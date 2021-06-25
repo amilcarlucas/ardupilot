@@ -99,7 +99,7 @@ void AP_FETtecOneWire::init()
 
     const uint32_t now = AP_HAL::micros();
     if (now - _last_send_us < DELAY_TIME_US) {
-        // scan_escs(), init_escs(), and set_full_telemetry() are to be called periodicaly multiple times
+        // scan_escs(), config_escs(), and set_full_telemetry() are to be called periodically multiple times
         // but the call period must to be bigger than DELAY_TIME_US,
         // as the bootloader has some message timing requirements.
         return;
@@ -113,12 +113,12 @@ void AP_FETtecOneWire::init()
         return;
     }
 
-    if (_init_active < MOTOR_COUNT_MAX) {
+    if (_config_active < MOTOR_COUNT_MAX) {
         if (_found_escs_count == 0) {
             _scan_active = 0;  // no ESC has been found yet, start scanning again
         } else {
             // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
-            _init_active = init_escs();
+            _config_active = config_escs();
         }
         return;
     }
@@ -194,7 +194,7 @@ void AP_FETtecOneWire::configuration_check()
             _set_full_telemetry_active = 1;
 #endif
             _scan_active = 0;
-            _init_active = 0;
+            _config_active = 0;
             _initialised = 0;
         }
     }
@@ -447,33 +447,34 @@ uint8_t AP_FETtecOneWire::scan_escs()
 }
 
 /**
-    starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _init_active >= MOTOR_COUNT_MAX
+    starts all ESCs in bus and prepares them for receiving the fast throttle command.
+    Should be periodically called until _config_active >= MOTOR_COUNT_MAX
     @return the current used ID
 */
-uint8_t AP_FETtecOneWire::init_escs()
+uint8_t AP_FETtecOneWire::config_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
-    if (_init_active == 0) {
-        _init.delay_loops = 0;
-        _init.active_id = 1;
-        _init.state = 0;
-        _init.timeout = 0;
-        _init.wake_from_bl = 1;
-        return _init_active + 1;
+    if (_config_active == 0) {
+        _config.delay_loops = 0;
+        _config.active_id = 1;
+        _config.state = 0;
+        _config.timeout = 0;
+        _config.wake_from_bl = 1;
+        return _config_active + 1;
     }
-    while (_active_esc_ids[_init_active] == false && _init_active < MOTOR_COUNT_MAX) {
-        _init_active++;
+    while (_active_esc_ids[_config_active] == false && _config_active < MOTOR_COUNT_MAX) {
+        _config_active++;
     }
 
-    if (_init_active == MOTOR_COUNT_MAX && _init.wake_from_bl == 0) {
-        return _init_active;
-    } else if (_init_active == MOTOR_COUNT_MAX && _init.wake_from_bl) {
-        _init.wake_from_bl = 0;
-        _init.active_id = 1;
-        _init_active = 1;
-        _init.state = 0;
-        _init.timeout = 0;
+    if (_config_active == MOTOR_COUNT_MAX && _config.wake_from_bl == 0) {
+        return _config_active;
+    } else if (_config_active == MOTOR_COUNT_MAX && _config.wake_from_bl) {
+        _config.wake_from_bl = 0;
+        _config.active_id = 1;
+        _config_active = 1;
+        _config.state = 0;
+        _config.timeout = 0;
 
         _min_id = MOTOR_COUNT_MAX;
         _max_id = 0;
@@ -492,8 +493,8 @@ uint8_t AP_FETtecOneWire::init_escs()
 
         if (_id_count == 0
                 || _max_id - _min_id > _id_count - 1) { // loop forever
-            _init.wake_from_bl = 1;
-            return _init.active_id;
+            _config.wake_from_bl = 1;
+            return _config.active_id;
         }
         _fast_throttle_byte_count = 1;
         int8_t bitCount = 12 + (_id_count * 11);
@@ -501,70 +502,70 @@ uint8_t AP_FETtecOneWire::init_escs()
             _fast_throttle_byte_count++;
             bitCount -= 8;
         }
-        _init.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-        _init.set_fast_command[2] = _min_id;                 // min ESC id
-        _init.set_fast_command[3] = _id_count;               // count of ESCs that will get signals
+        _config.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
+        _config.set_fast_command[2] = _min_id;                 // min ESC id
+        _config.set_fast_command[3] = _id_count;               // count of ESCs that will get signals
     }
 
-    if (_init.delay_loops > 0) {
-        _init.delay_loops--;
-        return _init_active;
+    if (_config.delay_loops > 0) {
+        _config.delay_loops--;
+        return _config_active;
     }
 
-    if (_init.active_id < _init_active) {
-        _init.active_id = _init_active;
-        _init.state = 0;
-        _init.timeout = 0;
+    if (_config.active_id < _config_active) {
+        _config.active_id = _config_active;
+        _config.state = 0;
+        _config.timeout = 0;
     }
 
-    if (_init.timeout == 3 || _init.timeout == 6 || _init.timeout == 9 || _init.timeout == 12) {
+    if (_config.timeout == 3 || _config.timeout == 6 || _config.timeout == 9 || _config.timeout == 12) {
         pull_reset();
     }
 
-    if (_init.timeout < 15) {
-        if (_init.wake_from_bl) {
-            switch (_init.state) {
+    if (_config.timeout < 15) {
+        if (_config.wake_from_bl) {
+            switch (_config.state) {
             case 0:
                 request[0] = OW_BL_START_FW;
-                if (_found_escs[_init.active_id].in_boot_loader == 1) {
-                    transmit(_init.active_id, request, 1);
-                    _init.delay_loops = 5;
+                if (_found_escs[_config.active_id].in_boot_loader == 1) {
+                    transmit(_config.active_id, request, 1);
+                    _config.delay_loops = 5;
                 } else {
-                    return _init.active_id + 1;
+                    return _config.active_id + 1;
                 }
-                _init.state = 1;
+                _config.state = 1;
                 break;
             case 1:
                 request[0] = OW_OK;
-                if (pull_command(_init.active_id, request, response, return_type::FULL_FRAME, 1)) {
-                    _init.timeout = 0;
+                if (pull_command(_config.active_id, request, response, return_type::FULL_FRAME, 1)) {
+                    _config.timeout = 0;
                     if (response[0] == 0x02) {
-                        _found_escs[_init.active_id].in_boot_loader = 1;
-                        _init.state = 0;
+                        _found_escs[_config.active_id].in_boot_loader = 1;
+                        _config.state = 0;
                     } else {
-                        _found_escs[_init.active_id].in_boot_loader = 0;
-                        _init.delay_loops = 1;
-                        return _init.active_id + 1;
+                        _found_escs[_config.active_id].in_boot_loader = 0;
+                        _config.delay_loops = 1;
+                        return _config.active_id + 1;
                     }
                 } else {
-                    _init.timeout++;
+                    _config.timeout++;
                 }
                 break;
             }
         } else {
-            if (pull_command(_init.active_id, _init.set_fast_command, response, return_type::RESPONSE, 4)) {
-                _init.timeout = 0;
-                _init.delay_loops = 1;
-                return _init.active_id + 1;
+            if (pull_command(_config.active_id, _config.set_fast_command, response, return_type::RESPONSE, 4)) {
+                _config.timeout = 0;
+                _config.delay_loops = 1;
+                return _config.active_id + 1;
             } else {
-                _init.timeout++;
+                _config.timeout++;
             }
         }
     } else {
         pull_reset();
-        return _init.active_id + 1;
+        return _config.active_id + 1;
     }
-    return _init.active_id;
+    return _config.active_id;
 }
 
 #if HAL_WITH_ESC_TELEM

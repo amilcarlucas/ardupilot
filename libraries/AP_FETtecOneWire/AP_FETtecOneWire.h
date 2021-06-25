@@ -136,10 +136,11 @@ private:
     uint8_t scan_escs();
 
     /**
-        starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _init_active >= MOTOR_COUNT_MAX
+        starts all ESCs in bus and prepares them for receiving the fast throttle command.
+        Should be periodically called until _config_active >= MOTOR_COUNT_MAX
         @return the current used ID
     */
-    uint8_t init_escs();
+    uint8_t config_escs();
 
 #if HAL_WITH_ESC_TELEM
     /**
@@ -207,7 +208,7 @@ private:
 
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus
     uint8_t _scan_active;
-    uint8_t _init_active;
+    uint8_t _config_active;
 #if HAL_WITH_ESC_TELEM
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
@@ -248,8 +249,8 @@ private:
         uint8_t timeout;
     } _scan;
 
-    /// presistent init state data (only used inside init_escs() function)
-    struct init_state
+    /// presistent config state data (only used inside config_escs() function)
+    struct config_state
     {
         uint8_t delay_loops;
         uint8_t active_id;
@@ -257,7 +258,7 @@ private:
         uint8_t timeout;
         uint8_t wake_from_bl;
         uint8_t set_fast_command[4] = {OW_SET_FAST_COM_LENGTH, 0, 0, 0};
-    } _init;
+    } _config;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
 
