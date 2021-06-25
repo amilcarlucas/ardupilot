@@ -14,6 +14,7 @@
  */
 
     /* Protocol implementation was provided by FETtec */
+    /* Strongly modified by Amilcar Lucas, IAV GmbH */
 
 #pragma once
 

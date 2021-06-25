@@ -14,6 +14,7 @@
  */
 
 /* Protocol implementation was provided by FETtec */
+/* Strongly modified by Amilcar Lucas, IAV GmbH */
 
 #include <AP_Math/AP_Math.h>
 #include <AP_Scheduler/AP_Scheduler.h>
@@ -173,19 +174,19 @@ void AP_FETtecOneWire::configuration_check()
             return;
         }
 
-        bool scan_missmatch = _found_escs_count != _nr_escs_in_bitmask;
-        bool telem_rx_missmatch = false;
+        bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
+        bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
         // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
         const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
-        telem_rx_missmatch = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
+        telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
-        if (scan_missmatch || telem_rx_missmatch) {
-            if (scan_missmatch) {
+        if (scan_missing || telem_rx_missing) {
+            if (scan_missing) {
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
             }
 #if HAL_WITH_ESC_TELEM
-            if (telem_rx_missmatch) {
+            if (telem_rx_missing) {
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
             }
             _set_full_telemetry_active = 1;
