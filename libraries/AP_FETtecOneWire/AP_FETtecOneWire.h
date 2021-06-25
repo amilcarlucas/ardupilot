@@ -134,7 +134,7 @@ private:
     uint8_t scan_escs();
 
     /**
-        starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _setup_active >= MOTOR_COUNT_MAX
+        starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _init_active >= MOTOR_COUNT_MAX
         @return the current used ID
     */
     uint8_t init_escs();
@@ -205,7 +205,7 @@ private:
 
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus
     uint8_t _scan_active;
-    uint8_t _setup_active;
+    uint8_t _init_active;
 #if HAL_WITH_ESC_TELEM
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;

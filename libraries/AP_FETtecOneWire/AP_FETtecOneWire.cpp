@@ -112,12 +112,12 @@ void AP_FETtecOneWire::init()
         return;
     }
 
-    if (_setup_active < MOTOR_COUNT_MAX) {
+    if (_init_active < MOTOR_COUNT_MAX) {
         if (_found_escs_count == 0) {
             _scan_active = 0;  // no ESC has been found yet, start scanning again
         } else {
             // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
-            _setup_active = init_escs();
+            _init_active = init_escs();
         }
         return;
     }
@@ -191,7 +191,7 @@ void AP_FETtecOneWire::configuration_check()
             _set_full_telemetry_active = 1;
 #endif
             _scan_active = 0;
-            _setup_active = 0;
+            _init_active = 0;
             _initialised = 0;
         }
     }
@@ -442,31 +442,31 @@ uint8_t AP_FETtecOneWire::scan_escs()
 }
 
 /**
-    starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _setup_active >= MOTOR_COUNT_MAX
+    starts all ESCs in bus and prepares them for receiving the fast throttle command. Should be called until _init_active >= MOTOR_COUNT_MAX
     @return the current used ID
 */
 uint8_t AP_FETtecOneWire::init_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
-    if (_setup_active == 0) {
+    if (_init_active == 0) {
         _init.delay_loops = 0;
         _init.active_id = 1;
         _init.state = 0;
         _init.timeout = 0;
         _init.wake_from_bl = 1;
-        return _setup_active + 1;
+        return _init_active + 1;
     }
-    while (_active_esc_ids[_setup_active] == false && _setup_active < MOTOR_COUNT_MAX) {
-        _setup_active++;
+    while (_active_esc_ids[_init_active] == false && _init_active < MOTOR_COUNT_MAX) {
+        _init_active++;
     }
 
-    if (_setup_active == MOTOR_COUNT_MAX && _init.wake_from_bl == 0) {
-        return _setup_active;
-    } else if (_setup_active == MOTOR_COUNT_MAX && _init.wake_from_bl) {
+    if (_init_active == MOTOR_COUNT_MAX && _init.wake_from_bl == 0) {
+        return _init_active;
+    } else if (_init_active == MOTOR_COUNT_MAX && _init.wake_from_bl) {
         _init.wake_from_bl = 0;
         _init.active_id = 1;
-        _setup_active = 1;
+        _init_active = 1;
         _init.state = 0;
         _init.timeout = 0;
 
@@ -503,11 +503,11 @@ uint8_t AP_FETtecOneWire::init_escs()
 
     if (_init.delay_loops > 0) {
         _init.delay_loops--;
-        return _setup_active;
+        return _init_active;
     }
 
-    if (_init.active_id < _setup_active) {
-        _init.active_id = _setup_active;
+    if (_init.active_id < _init_active) {
+        _init.active_id = _init_active;
         _init.state = 0;
         _init.timeout = 0;
     }
