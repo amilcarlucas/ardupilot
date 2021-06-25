@@ -128,61 +128,71 @@ void AP_FETtecOneWire::init()
         _set_full_telemetry_active = set_full_telemetry(1);
         return;
     }
+    _update_rate_hz = AP::scheduler().get_loop_rate_hz();
+    _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
 #endif
+
+    // get the user-configured FETtec ESCs bitmask parameter
+    // if the user changes this parameter, he will have to reboot
+    _mask = uint16_t(_motor_mask.get());
+
+    // tell SRV_Channels about ESC capabilities
+    SRV_Channels::set_digital_outputs(_mask, 0);
+
+    uint16_t smask = _mask; // shifted version of the _mask user parameter
+    _nr_escs_in_bitmask = 0;
+
+    // count the number of user-configured FETtec ESCs in the bitmask parameter
+    for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
+        SRV_Channel* c = SRV_Channels::srv_channel(i);
+        if (c == nullptr || (smask & 0x01) == 0x00) {
+            break;
+        }
+        smask >>= 1;
+        _nr_escs_in_bitmask++;
+    }
 
     _initialised = true;
 }
 
 /**
-  update configuration periodically to accommodate for parameter changes and test if the current configuration is OK
+  check if the current configuration is OK
 */
-void AP_FETtecOneWire::configuration_update()
+void AP_FETtecOneWire::configuration_check()
 {
-    if (!hal.util->get_soft_armed()) { // configuration updates are only done when vehicle is disarmed
+    if (hal.util->get_soft_armed()) {
+        return; // checks are only done when vehicle is disarmed, because the GCS_SEND_TEXT() function calls use lots of resources
+    }
 
-        const uint32_t now = AP_HAL::millis();
-        if ((now - _last_config_update_ms > 2000) || _last_config_update_ms == 0) {  // only runs once every 2 seconds
-            _last_config_update_ms = now;
+    const uint32_t now = AP_HAL::millis();
+    if ((now - _last_config_check_ms > 3000) || _last_config_check_ms == 0) {  // only runs once every 3 seconds
+        _last_config_check_ms = now;
 
-            if (!_uart->is_dma_enabled()) {
-                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
-                return; // will not work at all without DMA
-            }
+        if (!_uart->is_dma_enabled()) {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
+            return;
+        }
 
-            // get the user-configured FETtec ESCs bitmask parameter
-            _mask = uint16_t(_motor_mask.get());
-            // tell SRV_Channels about ESC capabilities
-            SRV_Channels::set_digital_outputs(_mask, 0);
-
-            uint16_t smask = _mask;
-            _nr_escs_in_bitmask = 0;
-
-            // count the number of user-configured FETtec ESCs in the bitmask parameter
-            for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-                SRV_Channel* c = SRV_Channels::srv_channel(i);
-                if (c == nullptr || (smask & 0x01) == 0x00) {
-                    break;
-                }
-                smask >>= 1;
-                _nr_escs_in_bitmask++;
-            }
-
+        bool scan_missmatch = _found_escs_count != _nr_escs_in_bitmask;
+        bool telem_rx_missmatch = false;
 #if HAL_WITH_ESC_TELEM
-            _update_rate_hz = AP::scheduler().get_loop_rate_hz();
-            _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
-            // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-            const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
-            if (num_active_escs < _nr_escs_in_bitmask) {
-                if ((now -_last_scan_ms > 5000) || _last_scan_ms == 0) {
-                    GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
-                    _last_scan_ms = now;
-                    _scan_active = 0;
-                    _setup_active = 0;
-                    _set_full_telemetry_active = 1;
-                    _initialised = 0;
-                }
-            }
+        // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
+        const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
+        telem_rx_missmatch = num_active_escs < _nr_escs_in_bitmask;
 #endif
+        if (scan_missmatch || telem_rx_missmatch) {
+            if (scan_missmatch) {
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
+            }
+#if HAL_WITH_ESC_TELEM
+            if (telem_rx_missmatch) {
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+            }
+            _set_full_telemetry_active = 1;
+#endif
+            _scan_active = 0;
+            _setup_active = 0;
+            _initialised = 0;
         }
     }
 }
@@ -759,7 +769,6 @@ void AP_FETtecOneWire::update()
     }
 #endif
 
-    // will only run after the configuration_update() is run at least once
     if (_nr_escs_in_bitmask) {
         // send motor setpoints to ESCs, and request for telemetry data
         escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
@@ -781,13 +790,7 @@ void AP_FETtecOneWire::update()
 #endif
     }
 
-    // Now that all real-time tasks above have been done, update the configuration if necessary.
-    // Note:
-    //   The first time the update() function gets run after _initialised is true none of the
-    //   above real-time tasks run because _nr_escs_in_bitmask will still be zero.
-    //   The configuration_update() function will update that the first time it is called.
-    //   After that the next invocation of the update() task will fully run, and the motors will start
-    //   getting trottle values.
-    configuration_update();
+    // Now that all real-time tasks above have been done, do some periodic checks.
+    configuration_check();
 }
 #endif  // HAL_AP_FETTEC_ONEWIRE_ENABLED
