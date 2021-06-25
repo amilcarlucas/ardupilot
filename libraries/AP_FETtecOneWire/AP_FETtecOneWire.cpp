@@ -170,10 +170,12 @@ void AP_FETtecOneWire::configuration_check()
     if ((now - _last_config_check_ms > 3000) || _last_config_check_ms == 0) {  // only runs once every 3 seconds
         _last_config_check_ms = now;
 
+#if CONFIG_HAL_BOARD != HAL_BOARD_SITL
         if (!_uart->is_dma_enabled()) {
             GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
             return;
         }
+#endif
 
         bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
         bool telem_rx_missing = false;
