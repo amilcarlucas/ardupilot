@@ -358,6 +358,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
         _scan.id = 0;
         _scan.state = 0;
         _scan.timeout = 0;
+        _found_escs_count = 0;
         return _scan_active + 1;
     }
     if (_scan.delay_loops > 0) {
