@@ -47,7 +47,7 @@ public:
 
     static const struct AP_Param::GroupInfo var_info[];
 
-    /// periodicaly called from SRV_Channels::push()
+    /// periodically called from SRV_Channels::push()
     void update();
     static AP_FETtecOneWire *get_singleton() {
         return _singleton;
@@ -129,7 +129,8 @@ private:
     bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame, const uint8_t req_len);
 
     /**
-        scans for ESCs in bus. should be called until _scan_active >= MOTOR_COUNT_MAX
+        scans for ESCs in bus.
+        Should be periodically called until _scan_active >= MOTOR_COUNT_MAX
         @return the current scanned ID
     */
     uint8_t scan_escs();
@@ -198,7 +199,7 @@ private:
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
     uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs
     uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; ///< error counter from the ESCs to pass the overflow
-    uint16_t _send_msg_count; ///< number of fast-trottle commands send by the flight controller
+    uint16_t _send_msg_count; ///< number of fast-throttle commands send by the flight controller
     uint16_t _update_rate_hz;
 #endif
     uint16_t _mask;
@@ -219,7 +220,7 @@ private:
     bool _active_esc_ids[MOTOR_COUNT_MAX];
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
-    bool _pull_success;      ///< request sent and reply sucessfuly received
+    bool _pull_success;      ///< request sent and reply successfully received
     bool _pull_busy;         ///< request-reply transaction is busy
 
     enum msg_type

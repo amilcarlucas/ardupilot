@@ -133,6 +133,8 @@ void AP_FETtecOneWire::init()
     _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
 #endif
 
+    static_assert(MOTOR_COUNT_MAX <= 16, "16bit bitmasks are too narrow for MOTOR_COUNT_MAX ESCs");
+
     // get the user-configured FETtec ESCs bitmask parameter
     // if the user changes this parameter, he will have to reboot
     _mask = uint16_t(_motor_mask.get());
@@ -347,7 +349,8 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 }
 
 /**
-    scans for ESCs in bus. should be called until _scan_active >= MOTOR_COUNT_MAX
+    scans for ESCs in bus.
+    Should be periodically called until _scan_active >= MOTOR_COUNT_MAX
     @return the current scanned ID
 */
 uint8_t AP_FETtecOneWire::scan_escs()
@@ -673,7 +676,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         uint8_t act_throttle_command = 0;
 
         // byte 1:
-        // bit 0,1,2,3 = ESC ID, Bit 4 = MSB (11bit) of first ESC throttle value, bit 5,6,7 = frame header
+        // bit 0,1,2,3 = ESC ID, Bit 4 = MSB bit of first ESC (11bit) throttle value, bit 5,6,7 = frame header
         // so AAAABCCC
         // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
         // B = MSB from first throttle value
@@ -735,12 +738,12 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
     }
 }
 
-/// periodicaly called from SRV_Channels::push()
+/// periodically called from SRV_Channels::push()
 void AP_FETtecOneWire::update()
 {
     if (!_initialised) {
         init();
-        return; // the rest of this function can only run after fully inited
+        return; // the rest of this function can only run after fully initted
     }
 
     if (_uart == nullptr) {
