@@ -173,7 +173,7 @@ private:
 
     /**
         if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
-        @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
+        @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
         @param motor_count the count of motors that should get values send
         @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     */
