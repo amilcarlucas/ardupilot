@@ -195,7 +195,7 @@ private:
 #endif
     } FETtecOneWireESC_t;
 
-    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX];
+    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX+1]; ///< One-indexed array
     uint32_t _last_config_check_ms;
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
@@ -220,7 +220,7 @@ private:
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
-    bool _active_esc_ids[MOTOR_COUNT_MAX];
+    bool _active_esc_ids[MOTOR_COUNT_MAX+1]; ///< One-indexed array
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
     bool _pull_success;      ///< request sent and reply successfully received

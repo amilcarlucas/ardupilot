@@ -106,13 +106,13 @@ void AP_FETtecOneWire::init()
         _last_send_us = now;
     }
 
-    if (_scan_active < MOTOR_COUNT_MAX) {
+    if (_scan_active <= MOTOR_COUNT_MAX) {
         // scan for all ESCs in OneWire bus
         _scan_active = scan_escs();
         return;
     }
 
-    if (_config_active < MOTOR_COUNT_MAX) {
+    if (_config_active <= MOTOR_COUNT_MAX) {
         if (_found_escs_count == 0) {
             _scan_active = 0;  // no ESC has been found yet, start scanning again
         } else {
@@ -123,7 +123,7 @@ void AP_FETtecOneWire::init()
     }
 
 #if HAL_WITH_ESC_TELEM
-    if (_set_full_telemetry_active < MOTOR_COUNT_MAX+1) {
+    if (_set_full_telemetry_active <= MOTOR_COUNT_MAX) {
         // set telemetry to alternative mode (full telemetry from a single ESC, in a single response packet)
         _set_full_telemetry_active = set_full_telemetry(1);
         return;
