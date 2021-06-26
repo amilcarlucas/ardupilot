@@ -683,6 +683,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
         // B = MSB from first throttle value
         // C = frame header
+        static_assert(MOTOR_COUNT_MAX<=15, "OneWire supports at most 15 ESCs, because of the 4 bit limitation bellow");
         fast_throttle_command[0] = tlm_request << 4;
         fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
         fast_throttle_command[0] |= 0x01;
