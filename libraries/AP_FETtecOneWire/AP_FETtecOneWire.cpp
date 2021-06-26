@@ -498,7 +498,7 @@ uint8_t AP_FETtecOneWire::config_escs()
             return _config.active_id;
         }
         _fast_throttle_byte_count = 1;
-        int8_t bitCount = 12 + (_id_count * 11);
+        int16_t bitCount = 12 + (_id_count * 11);
         while (bitCount > 0) {
             _fast_throttle_byte_count++;
             bitCount -= 8;
@@ -700,7 +700,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         uint8_t bits_left_from_command = 7;
         uint8_t act_byte = 2;
         uint8_t bits_from_byte_left = 8;
-        uint8_t bits_to_add_left = (12 + (((_max_id - _min_id) + 1) * 11)) - 16;
+        uint16_t bits_to_add_left = (12 + (((_max_id - _min_id) + 1) * 11)) - 16;
         while (bits_to_add_left > 0) {
             if (bits_from_byte_left >= bits_left_from_command) {
                 fast_throttle_command[act_byte] |=
