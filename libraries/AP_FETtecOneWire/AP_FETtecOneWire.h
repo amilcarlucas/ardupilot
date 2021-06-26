@@ -182,6 +182,8 @@ private:
     */
     void escs_set_values(const uint16_t *motor_values, const uint8_t motor_count, const uint8_t tlm_request);
 
+    static constexpr uint8_t SERIAL_NR_BITWIDTH = 12;
+
     typedef struct FETtecOneWireESC
     {
         uint8_t in_boot_loader;
@@ -189,7 +191,7 @@ private:
         uint8_t firmware_version;
         uint8_t firmware_sub_version;
         uint8_t esc_type;
-        uint8_t serial_number[12];
+        uint8_t serial_number[SERIAL_NR_BITWIDTH];
 #endif
     } FETtecOneWireESC_t;
 

@@ -429,7 +429,7 @@ uint8_t AP_FETtecOneWire::scan_escs()
             if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
                 _scan.timeout = 0;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                for (uint8_t i = 0; i < 12; i++) {
+                for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                     _found_escs[_scan.scanID].serialNumber[i] = response[i];
                 }
 #endif
