@@ -102,9 +102,8 @@ void AP_FETtecOneWire::init()
         // but the call period must to be bigger than DELAY_TIME_US,
         // as the bootloader has some message timing requirements.
         return;
-    } else {
-        _last_send_us = now;
     }
+    _last_send_us = now;
 
     if (_scan_active <= MOTOR_COUNT_MAX) {
         // scan for all ESCs in OneWire bus
@@ -167,37 +166,38 @@ void AP_FETtecOneWire::configuration_check()
     }
 
     const uint32_t now = AP_HAL::millis();
-    if ((now - _last_config_check_ms > 3000) || _last_config_check_ms == 0) {  // only runs once every 3 seconds
-        _last_config_check_ms = now;
+    if ((now - _last_config_check_ms < 3000) && _last_config_check_ms != 0) {  // only runs once every 3 seconds
+        return;
+    }
+    _last_config_check_ms = now;
 
 #if CONFIG_HAL_BOARD != HAL_BOARD_SITL
-        if (!_uart->is_dma_enabled()) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
-            return;
-        }
+    if (!_uart->is_dma_enabled()) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW UART needs DMA");
+        return;
+    }
 #endif
 
-        bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
-        bool telem_rx_missing = false;
+    bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
+    bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
-        // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-        const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
-        telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
+    // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
+    const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
+    telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
-        if (scan_missing || telem_rx_missing) {
-            if (scan_missing) {
-                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
-            }
-#if HAL_WITH_ESC_TELEM
-            if (telem_rx_missing) {
-                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
-            }
-            _set_full_telemetry_active = 1;
-#endif
-            _scan_active = 0;
-            _config_active = 0;
-            _initialised = 0;
+    if (scan_missing || telem_rx_missing) {
+        if (scan_missing) {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
         }
+#if HAL_WITH_ESC_TELEM
+        if (telem_rx_missing) {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+        }
+        _set_full_telemetry_active = 1;
+#endif
+        _scan_active = 0;
+        _config_active = 0;
+        _initialised = 0;
     }
 }
 
