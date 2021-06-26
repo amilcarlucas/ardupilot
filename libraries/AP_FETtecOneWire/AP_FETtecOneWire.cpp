@@ -75,10 +75,6 @@ AP_FETtecOneWire::AP_FETtecOneWire()
     _response_length[OW_SET_TLM_TYPE] = 1;
 }
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-#include <stdio.h>
-#endif
-
 /**
   initialize the serial port, scan the OneWire bus, setup the found ESCs
 */
@@ -132,9 +128,6 @@ void AP_FETtecOneWire::init()
         _nr_escs_in_bitmask++;
     }
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-        ::fprintf(stderr, "Initialized\n");
-#endif
     _initialised = true;
 }
 
@@ -345,9 +338,6 @@ void AP_FETtecOneWire::scan_escs()
             _found_escs[i].active = false;
         }
         if (now > 500000) {
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-//            ::fprintf(stderr, "scan id=%u, state=%u\n", _scan.id, _scan.state);
-#endif
             _scan.state++;
         }
         return;
@@ -360,9 +350,6 @@ void AP_FETtecOneWire::scan_escs()
                 _found_escs_count++; // found a new ESC
             }
             _found_escs[_scan.id].active = true;
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-//            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, bootloader=%u\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state, (response[0] == 0x02));
-#endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             if (response[0] == 0x02) {
@@ -381,9 +368,6 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::START_FW:
         request[0] = OW_BL_START_FW;
         transmit(_scan.id, request, 1);
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-//        ::fprintf(stderr, "scan id=%u, starting FW\n", _scan.id);
-#endif
         _scan.state++;
         return;
         break;
@@ -391,9 +375,6 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::WAIT_START_FW:
         _uart->discard_input(); // discard the answer to the previous transmit
         _scan.state = IN_BOOTLOADER;
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-//        ::fprintf(stderr, "scan id=%u, will retest if in bootloader\n", _scan.id);
-#endif
         return;
         break;
 
@@ -444,12 +425,6 @@ void AP_FETtecOneWire::scan_escs()
                 _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;  // one or more ESCs found, scan is completed, now configure the ESCs found
                 config_fast_throttle();
                 _scan.id = _fast_throttle.min_id;
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-                ::fprintf(stderr, "scan done. %u ESCs found\n", _found_escs_count);
-                for (uint8_t i = 0; i < MOTOR_COUNT_MAX; ++i) {
-                    ::fprintf(stderr, "ESC%u active=%u\n", i, _found_escs[i].active);
-                }
-#endif
             }
         }
         return;
@@ -457,9 +432,6 @@ void AP_FETtecOneWire::scan_escs()
 
     case scan_state_t::CONFIG_FAST_THROTTLE:
         if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, config fast-throttle OK\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state);
-#endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
 #if HAL_WITH_ESC_TELEM
@@ -476,9 +448,6 @@ void AP_FETtecOneWire::scan_escs()
         request[0] = OW_SET_TLM_TYPE;
         request[1] = 1;
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, config telem OK\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state);
-#endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
@@ -711,10 +680,7 @@ void AP_FETtecOneWire::update()
         if (c == nullptr) {
             break;
         }
-        motor_pwm[i] = constrain_int16(c->get_output_pwm() + 6, 1000, 2000);
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-        ::fprintf(stderr, "pwm[%u] in: %u\n", i, (unsigned)motor_pwm[i]);
-#endif
+        motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
     }
 
 #if HAL_WITH_ESC_TELEM
