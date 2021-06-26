@@ -580,6 +580,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
             if (_set_full_telemetry_retry_count > 128) { //It is important to have the correct telemetry set so start over if there is something wrong.
                 _pull_busy = false;
                 _set_full_telemetry_active = 1;
+                _set_full_telemetry_retry_count = 0;
             }
         }
     } else { //If there is no ESC detected skip it.
