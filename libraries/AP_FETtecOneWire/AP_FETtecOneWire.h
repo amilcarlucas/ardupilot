@@ -200,8 +200,8 @@ private:
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
-    uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs
-    uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; ///< error counter from the ESCs to pass the overflow
+    uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs. Zero-indexed array
+    uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; ///< error counter from the ESCs to pass the overflow. Zero-indexed array
     uint16_t _send_msg_count; ///< number of fast-throttle commands send by the flight controller
     uint16_t _update_rate_hz;
 #endif
