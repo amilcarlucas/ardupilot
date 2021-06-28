@@ -122,10 +122,10 @@ private:
 
     /**
         scans for ESCs in bus.
-        Should be periodically called until _scan_active >= MOTOR_COUNT_MAX
-        @return the current scanned ID
+        Should be periodically called until it returns true
+        @return true when OneWire bus scan is complete
     */
-    uint8_t scan_escs();
+    bool scan_escs();
 
     /**
         starts all ESCs in bus and prepares them for receiving the fast throttle command.
@@ -178,7 +178,8 @@ private:
 
     typedef struct FETtecOneWireESC
     {
-        uint8_t in_boot_loader;
+        bool in_boot_loader;
+        bool active;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         uint8_t firmware_version;
         uint8_t firmware_sub_version;
@@ -187,7 +188,7 @@ private:
 #endif
     } FETtecOneWireESC_t;
 
-    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX+1]; ///< One-indexed array
+    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
     uint32_t _last_config_check_ms;
     uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
@@ -201,7 +202,6 @@ private:
     uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
 
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus
-    uint8_t _scan_active;
     uint8_t _config_active;
 #if HAL_WITH_ESC_TELEM
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
@@ -212,7 +212,6 @@ private:
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
-    bool _active_esc_ids[MOTOR_COUNT_MAX+1]; ///< One-indexed array
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
     bool _pull_success;      ///< request sent and reply successfully received
@@ -240,7 +239,8 @@ private:
         uint16_t delay_loops;
         uint8_t id;
         uint8_t state;
-        uint8_t timeout;
+        uint8_t rx_retry_cnt;
+        uint8_t trans_retry_cnt;
     } _scan;
 
     /// presistent config state data (only used inside config_escs() function)

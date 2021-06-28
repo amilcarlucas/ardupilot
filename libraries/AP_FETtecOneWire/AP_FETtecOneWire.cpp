@@ -105,19 +105,14 @@ void AP_FETtecOneWire::init()
     }
     _last_send_us = now;
 
-    if (_scan_active <= MOTOR_COUNT_MAX) {
+    if (!scan_escs()) {
         // scan for all ESCs in OneWire bus
-        _scan_active = scan_escs();
         return;
     }
 
     if (_config_active <= MOTOR_COUNT_MAX) {
-        if (_found_escs_count == 0) {
-            _scan_active = 0;  // no ESC has been found yet, start scanning again
-        } else {
-            // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
-            _config_active = config_escs();
-        }
+        // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
+        _config_active = config_escs();
         return;
     }
 
@@ -195,7 +190,6 @@ void AP_FETtecOneWire::configuration_check()
         }
         _set_full_telemetry_active = 1;
 #endif
-        _scan_active = 0;
         _config_active = 0;
         _initialised = 0;
     }
@@ -336,100 +330,110 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 
 /**
     scans for ESCs in bus.
-    Should be periodically called until _scan_active >= MOTOR_COUNT_MAX
-    @return the current scanned ID
+    Should be periodically called until it returns true
+    @return true when OneWire bus scan is complete
 */
-uint8_t AP_FETtecOneWire::scan_escs()
+bool AP_FETtecOneWire::scan_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
-    if (_scan_active == 0) {
+    if (_pull_success) { // pause one loop between a receive() and the consecutive transmit()
+        _pull_success = false;
+        return false;
+    }
+    switch (_scan.state) {
+    case 0:
         _scan.delay_loops = 500;
-        _scan.id = 0;
-        _scan.state = 0;
-        _scan.timeout = 0;
-        _found_escs_count = 0;
-        return _scan_active + 1;
-    }
-    if (_scan.delay_loops > 0) {
-        _scan.delay_loops--;
-        return _scan_active;
-    }
-    if (_scan.id < _scan_active) {
-        _scan.id = _scan_active;
-        _scan.state = 0;
-        _scan.timeout = 0;
-    }
-    if (_scan.timeout == 3 || _scan.timeout == 6 || _scan.timeout == 9 || _scan.timeout == 12) {
-        pull_reset();
-    }
-    if (_scan.timeout < 15) {
-        switch (_scan.state) {
-        case 0:
-            request[0] = OW_OK;
-            if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
-                _scan.timeout = 0;
-                _active_esc_ids[_scan.id] = true;
-                _found_escs_count++;
-                if (response[0] == 0x02) {
-                    _found_escs[_scan.id].in_boot_loader = 1;
-                } else {
-                    _found_escs[_scan.id].in_boot_loader = 0;
-                }
-                _scan.delay_loops = 1;
-                _scan.state++;
-            } else {
-                _scan.timeout++;
-            }
-            break;
-        case 1:
-            request[0] = OW_REQ_TYPE;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
-                _scan.timeout = 0;
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                _found_escs[_scan.scanID].esc_type = response[0];
-#endif
-                _scan.delay_loops = 1;
-                _scan.state++;
-            } else {
-                _scan.timeout++;
-            }
-            break;
-        case 2:
-            request[0] = OW_REQ_SW_VER;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
-                _scan.timeout = 0;
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                _found_escs[_scan.scanID].firmware_version = response[0];
-                _found_escs[_scan.scanID].firmware_sub_version = response[1];
-#endif
-                _scan.delay_loops = 1;
-                _scan.state++;
-            } else {
-                _scan.timeout++;
-            }
-            break;
-        case 3:
-            request[0] = OW_REQ_SN;
-            if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
-                _scan.timeout = 0;
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-                for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
-                    _found_escs[_scan.scanID].serialNumber[i] = response[i];
-                }
-#endif
-                _scan.delay_loops = 1;
-                return _scan.id + 1;
-            } else {
-                _scan.timeout++;
-            }
-            break;
+        _scan.state++;
+        return false;
+        break;
+    case 1:
+        if (_scan.delay_loops > 0) {
+            _scan.delay_loops--;
+        } else {
+            _scan.state++;
         }
-    } else {
-        pull_reset();
-        return _scan.id + 1;
+        return false;
+        break;
+    case 2:
+        request[0] = OW_OK;
+        if (pull_command(_scan.id+1, request, response, return_type::FULL_FRAME, 1)) {
+            _found_escs[_scan.id].active = true;
+            _found_escs[_scan.id].in_boot_loader = (response[0] == 0x02);
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+            _found_escs_count++;
+            _scan.state++;
+            return false;
+        }
+        break;
+    case 3:
+        request[0] = OW_REQ_TYPE;
+        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            _found_escs[_scan.id].esc_type = response[0];
+#endif
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+            _scan.state++;
+            return false;
+        }
+        break;
+    case 4:
+        request[0] = OW_REQ_SW_VER;
+        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            _found_escs[_scan.id].firmware_version = response[0];
+            _found_escs[_scan.id].firmware_sub_version = response[1];
+#endif
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+            _scan.state++;
+            return false;
+        }
+        break;
+    case 5:
+        request[0] = OW_REQ_SN;
+        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
+                _found_escs[_scan.id].serialNumber[i] = response[i];
+            }
+#endif
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+            _scan.state++;
+            return false;
+        }
+        break;
+    case 6:
+        _scan.state = 0;
+        _scan.id++; // re-run this state machine with the next ESC ID
+        if (_scan.id == MOTOR_COUNT_MAX) {
+            _scan.id = 0;
+            if (_found_escs_count) {
+                return true;
+            }
+        }
+        return false;
+        break;
     }
-    return _scan.id;
+
+    _scan.rx_retry_cnt++;
+    // it will try twice to read the response of a request
+    if (_scan.rx_retry_cnt > 2) {
+        _scan.rx_retry_cnt = 0;
+
+        pull_reset(); // re-transmit the request, in the hope of getting a valid response later
+
+        _scan.trans_retry_cnt++;
+        if (_scan.trans_retry_cnt > 4) {
+            // the request re-transmit failed multiple times, give up this ESC, goto the next one
+            _scan.trans_retry_cnt = 0;
+            _scan.state = 6;
+        }
+    }
+    return false;
 }
 
 /**
@@ -449,7 +453,7 @@ uint8_t AP_FETtecOneWire::config_escs()
         _config.wake_from_bl = 1;
         return _config_active + 1;
     }
-    while (_active_esc_ids[_config_active] == false && _config_active < MOTOR_COUNT_MAX) {
+    while (_found_escs[_config_active-1].active == false && _config_active < MOTOR_COUNT_MAX) {
         _config_active++;
     }
 
@@ -466,7 +470,7 @@ uint8_t AP_FETtecOneWire::config_escs()
         _max_id = 0;
         _id_count = 0;
         for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-            if (_active_esc_ids[i]) {
+            if (_found_escs[i].active) {
                 _id_count++;
                 if (i < _min_id) {
                     _min_id = i;
@@ -513,7 +517,7 @@ uint8_t AP_FETtecOneWire::config_escs()
             switch (_config.state) {
             case 0:
                 request[0] = OW_BL_START_FW;
-                if (_found_escs[_config.active_id].in_boot_loader == 1) {
+                if (_found_escs[_config.active_id-1].in_boot_loader) {
                     transmit(_config.active_id, request, 1);
                     _config.delay_loops = 5;
                 } else {
@@ -526,10 +530,10 @@ uint8_t AP_FETtecOneWire::config_escs()
                 if (pull_command(_config.active_id, request, response, return_type::FULL_FRAME, 1)) {
                     _config.timeout = 0;
                     if (response[0] == 0x02) {
-                        _found_escs[_config.active_id].in_boot_loader = 1;
+                        _found_escs[_config.active_id-1].in_boot_loader = true;
                         _config.state = 0;
                     } else {
-                        _found_escs[_config.active_id].in_boot_loader = 0;
+                        _found_escs[_config.active_id-1].in_boot_loader = false;
                         _config.delay_loops = 1;
                         return _config.active_id + 1;
                     }
@@ -561,7 +565,7 @@ uint8_t AP_FETtecOneWire::config_escs()
 */
 uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
 {
-    if (_active_esc_ids[_set_full_telemetry_active]) { //If ESC is detected at this ID
+    if (_found_escs[_set_full_telemetry_active-1].active) { //If ESC is detected at this ID
         uint8_t response[1];
         uint8_t request[2];
         request[0] = OW_SET_TLM_TYPE;
