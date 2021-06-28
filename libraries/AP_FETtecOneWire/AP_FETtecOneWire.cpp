@@ -495,8 +495,8 @@ uint8_t AP_FETtecOneWire::config_escs()
             bitCount -= 8;
         }
         _config.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-        _config.set_fast_command[2] = _min_id;                 // min ESC id
-        _config.set_fast_command[3] = _id_count;               // count of ESCs that will get signals
+        _config.set_fast_command[2] = _min_id+1;                 // min ESC id
+        _config.set_fast_command[3] = _id_count;                 // count of ESCs that will get signals
     }
 
     if (_config.delay_loops > 0) {

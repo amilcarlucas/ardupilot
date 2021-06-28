@@ -206,8 +206,8 @@ private:
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
 #endif
-    int8_t _min_id;          ///< One-indexed ESC ID
-    int8_t _max_id;          ///< One-indexed ESC ID
+    int8_t _min_id;          ///< Zero-indexed ESC ID
+    int8_t _max_id;          ///< Zero-indexed ESC ID
     uint8_t _id_count;       ///< number of ESCs fully operational in the OneWire bus and configured by the config_escs() function
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
