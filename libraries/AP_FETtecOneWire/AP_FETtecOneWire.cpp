@@ -201,7 +201,7 @@ void AP_FETtecOneWire::configuration_check()
 #endif
         _scan.state = scan_state_t::WAIT_FOR_BOOT;
         _config_active = 0;
-        _initialised = 0;
+        _initialised = false;
     }
 }
 
@@ -281,8 +281,6 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
             for (uint8_t i = 1; i < raw_length; i++) {
                 receive_buf[i] = _uart->read();
             }
-            // empty buffer, we are not expecting any more data now
-            _uart->discard_input();
             // check CRC
             if (crc8_dvb_update(0, receive_buf, raw_length-1u) == receive_buf[raw_length-1u]) {
                 if (return_full_frame == return_type::RESPONSE) {

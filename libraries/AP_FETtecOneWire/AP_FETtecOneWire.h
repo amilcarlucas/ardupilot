@@ -198,8 +198,9 @@ private:
 #endif
     uint16_t _mask;
     uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
-
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus by the scan_escs() function
+    uint8_t _id_count;           ///< number of ESCs fully operational in the OneWire bus and configured by the config_escs() function
+
     uint8_t _config_active;
 #if HAL_WITH_ESC_TELEM
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
@@ -207,7 +208,6 @@ private:
 #endif
     int8_t _min_id;          ///< Zero-indexed ESC ID
     int8_t _max_id;          ///< Zero-indexed ESC ID
-    uint8_t _id_count;       ///< number of ESCs fully operational in the OneWire bus and configured by the config_escs() function
     uint8_t _fast_throttle_byte_count;
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
