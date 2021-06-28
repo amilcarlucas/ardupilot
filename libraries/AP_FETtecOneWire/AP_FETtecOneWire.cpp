@@ -655,10 +655,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 /**
     if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
     @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
-    @param motorCount the count of motors that should get values send
     @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
 */
-void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t motorCount, const uint8_t tlm_request)
+void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t tlm_request)
 {
     if (_id_count > 0) {
         // 8  bits OneWire Header
@@ -777,7 +776,7 @@ void AP_FETtecOneWire::update()
 
     if (_nr_escs_in_bitmask) {
         // send motor setpoints to ESCs, and request for telemetry data
-        escs_set_values(motor_pwm, _id_count, _requested_telemetry_from_esc);
+        escs_set_values(motor_pwm, _requested_telemetry_from_esc);
 
 #if HAL_WITH_ESC_TELEM
         // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
