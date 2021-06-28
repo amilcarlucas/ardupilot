@@ -301,7 +301,6 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
 */
 void AP_FETtecOneWire::pull_reset()
 {
-    _pull_success = false;
     _pull_busy = false;
 }
 
@@ -319,13 +318,12 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 {
     if (!_pull_busy) {
         _pull_busy = true;
-        _pull_success = false;
         transmit(esc_id, command, req_len);
     } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
         _pull_busy = false;
-        _pull_success = true;
+        return true;
     }
-    return _pull_success;
+    return false;
 }
 
 /**

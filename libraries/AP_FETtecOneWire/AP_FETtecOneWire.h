@@ -214,7 +214,6 @@ private:
     uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
-    bool _pull_success;      ///< request sent and reply successfully received
     bool _pull_busy;         ///< request-reply transaction is busy
 
     enum msg_type
