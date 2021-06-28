@@ -610,7 +610,7 @@ void AP_FETtecOneWire::inc_send_msg_count()
 }
 
 /**
-    calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
+    calculates tx (outgoing packets) error-rate by converting the CRC error counts reported by the ESCs into percentage
     @param esc_id id of ESC, that the error is calculated for
     @param current_error_count the error count given by the esc
     @return the error in percent
@@ -660,10 +660,10 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t tlm_request)
 {
     if (_id_count > 0) {
-        // 8  bits OneWire Header
-        // 4  bits telemetry request
-        // 11 bits per ESC
-        // 8  bits CRC
+        // 8  bits - OneWire Header
+        // 4  bits - telemetry request
+        // 11 bits - throttle value per ESC
+        // 8  bits - frame CRC
         // 7  dummy for rounding up the division by 8
         uint8_t fast_throttle_command[(8+4+(11*MOTOR_COUNT_MAX)+8+7)/8] = { 0 };
         uint8_t act_throttle_command = 0;
@@ -671,7 +671,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         // byte 1:
         // bit 0,1,2,3 = ESC ID, Bit 4 = MSB bit of first ESC (11bit) throttle value, bit 5,6,7 = frame header
         // so AAAABCCC
-        // A = ESC ID, telemetry is requested from. ESC ID == 0 means no request.
+        // A = ID from the ESC telemetry is requested from. ESC ID == 0 means no request.
         // B = MSB from first throttle value
         // C = frame header
         static_assert(MOTOR_COUNT_MAX<=15, "OneWire supports at most 15 ESCs, because of the 4 bit limitation bellow");

@@ -148,7 +148,7 @@ private:
     void inc_send_msg_count();
 
     /**
-        calculates crc tx error rate for incoming packet. It converts the CRC error counts into percentage
+        calculates tx (outgoing packets) error-rate by converting the CRC error counts reported by the ESCs into percentage
         @param esc_id id of ESC, that the error is calculated for
         @param esc_error_count the error count given by the esc
         @return the error in percent
