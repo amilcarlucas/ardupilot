@@ -638,7 +638,11 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
         ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME);
 
         if (ret == receive_response::ANSWER_VALID) {
-            tlm_from_id = (uint8_t)telem[1];
+            if (telem[1] > 0 && telem[1] <=  MOTOR_COUNT_MAX) {
+                tlm_from_id = (uint8_t)telem[1]-1;
+            } else {
+                tlm_from_id = 0;
+            }
 
             t.temperature_cdeg = int16_t(telem[5+0] * 100);
             t.voltage = float((telem[5+1]<<8)|telem[5+2]) * 0.01f;
@@ -787,9 +791,9 @@ void AP_FETtecOneWire::update()
                 _pole_count = 14;
             }
             const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc, tx_err_count);
-            update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
+            update_rpm(tlm_from_id, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
 
-            update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
+            update_telem_data(tlm_from_id, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
         }
 #endif
     }
