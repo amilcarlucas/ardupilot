@@ -96,19 +96,19 @@ void AP_FETtecOneWire::init()
         return; // no serial port available, so nothing to do here
     }
 
+    if (_scan.state != scan_state_t::DONE) {
+        scan_escs();
+        return;
+    }
+
     const uint32_t now = AP_HAL::micros();
     if (now - _last_send_us < DELAY_TIME_US) {
-        // scan_escs(), config_escs(), and set_full_telemetry() are to be called periodically multiple times
+        // config_escs(), and set_full_telemetry() are to be called periodically multiple times
         // but the call period must to be bigger than DELAY_TIME_US,
         // as the bootloader has some message timing requirements.
         return;
     }
     _last_send_us = now;
-
-    if (!scan_escs()) {
-        // scan for all ESCs in OneWire bus
-        return;
-    }
 
     if (_config_active <= MOTOR_COUNT_MAX) {
         // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
@@ -199,6 +199,7 @@ void AP_FETtecOneWire::configuration_check()
         }
         _set_full_telemetry_active = 1;
 #endif
+        _scan.state = scan_state_t::WAIT_FOR_BOOT;
         _config_active = 0;
         _initialised = 0;
     }
@@ -337,28 +338,31 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 
 /**
     scans for ESCs in bus.
-    Should be periodically called until it returns true
-    @return true when OneWire bus scan is complete
+    Should be periodically called until _scan.state == scan_state_t::DONE
 */
-bool AP_FETtecOneWire::scan_escs()
+void AP_FETtecOneWire::scan_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
+
     const uint32_t now = AP_HAL::micros();
-    if (now - _scan.last_us < 2000) {
-        // the call period must to be bigger than 2000 US,
-        // as the bootloader has some message timing requirements.
-        return false;
+    if (now - _scan.last_us < 2000U) {
+        // the scan_escs() call period must be bigger than 2000 US,
+        // as the bootloader has some message timing requirements. And we might be in bootloader
+        return;
     }
     _scan.last_us = now;
+
     switch (_scan.state) {
-    case 0:
+    case scan_state_t::WAIT_FOR_BOOT:
+        _found_escs_count = 0;
+        _scan.id = 0;
         if (now > 500000) {
             _scan.state++;
         }
-        return false;
+        return;
         break;
-    case 1:
+    case scan_state_t::IN_BOOTLOADER:
         request[0] = OW_OK;
         if (pull_command(_scan.id+1, request, response, return_type::FULL_FRAME, 1)) {
             _found_escs[_scan.id].active = true;
@@ -369,23 +373,23 @@ bool AP_FETtecOneWire::scan_escs()
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
             _scan.state++;
 #else
-            _scan.state = 5;
+            _scan.state = scan_state_t::NEXT_ID;
 #endif
-            return false;
+            return;
         }
         break;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-    case 2:
+    case scan_state_t::ESC_TYPE:
         request[0] = OW_REQ_TYPE;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].esc_type = response[0];
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
-            return false;
+            return;
         }
         break;
-    case 3:
+    case scan_state_t::SW_VER:
         request[0] = OW_REQ_SW_VER;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].firmware_version = response[0];
@@ -393,10 +397,10 @@ bool AP_FETtecOneWire::scan_escs()
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
-            return false;
+            return;
         }
         break;
-    case 4:
+    case scan_state_t::SN:
         request[0] = OW_REQ_SN;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
@@ -405,20 +409,21 @@ bool AP_FETtecOneWire::scan_escs()
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
-            return false;
+            return;
         }
         break;
 #endif
-    case 5:
-        _scan.state = 1;
+    case scan_state_t::NEXT_ID:
+        _scan.state = scan_state_t::IN_BOOTLOADER;
         _scan.id++; // re-run this state machine with the next ESC ID
         if (_scan.id == MOTOR_COUNT_MAX) {
             _scan.id = 0;
             if (_found_escs_count) {
-                return true;
+                _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
+                return;
             }
         }
-        return false;
+        return;
         break;
     }
 
@@ -431,12 +436,11 @@ bool AP_FETtecOneWire::scan_escs()
 
         _scan.trans_retry_cnt++;
         if (_scan.trans_retry_cnt > 4) {
-            // the request re-transmit failed multiple times, give up this ESC, goto the next one
+            // the request re-transmit failed multiple times, give-up on this ESC, goto the next one
             _scan.trans_retry_cnt = 0;
-            _scan.state = 5;
+            _scan.state = scan_state_t::NEXT_ID;
         }
     }
-    return false;
 }
 
 /**

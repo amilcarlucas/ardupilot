@@ -122,10 +122,9 @@ private:
 
     /**
         scans for ESCs in bus.
-        Should be periodically called until it returns true
-        @return true when OneWire bus scan is complete
+        Should be periodically called until _scan.state == scan_state_t::DONE
     */
-    bool scan_escs();
+    void scan_escs();
 
     /**
         starts all ESCs in bus and prepares them for receiving the fast throttle command.
@@ -229,6 +228,16 @@ private:
         OW_SET_FAST_COM_LENGTH = 26,
         OW_SET_TLM_TYPE = 27, //1 for alternative telemetry. ESC sends full telem per ESC: Temp, Volt, Current, ERPM, Consumption, CrcErrCount
         OW_SET_LED_TMP_COLOR = 51,
+    };
+
+    enum scan_state_t : uint8_t {
+        WAIT_FOR_BOOT,
+        IN_BOOTLOADER,
+        ESC_TYPE,
+        SW_VER,
+        SN,
+        NEXT_ID,
+        DONE
     };
 
     /// presistent scan state data (only used inside scan_escs() function)
