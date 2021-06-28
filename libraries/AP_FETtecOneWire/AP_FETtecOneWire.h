@@ -207,8 +207,8 @@ private:
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
 #endif
-    int8_t _min_id;
-    int8_t _max_id;
+    int8_t _min_id;          ///< One-indexed ESC ID
+    int8_t _max_id;          ///< One-indexed ESC ID
     uint8_t _id_count;
     uint8_t _fast_throttle_byte_count;
     uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
@@ -236,7 +236,7 @@ private:
     /// presistent scan state data (only used inside scan_escs() function)
     struct scan_state
     {
-        uint16_t delay_loops;
+        uint32_t last_us;
         uint8_t id;
         uint8_t state;
         uint8_t rx_retry_cnt;

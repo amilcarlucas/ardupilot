@@ -337,25 +337,21 @@ bool AP_FETtecOneWire::scan_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
     uint8_t request[1];
-    if (_pull_success) { // pause one loop between a receive() and the consecutive transmit()
-        _pull_success = false;
+    const uint32_t now = AP_HAL::micros();
+    if (now - _scan.last_us < 2000) {
+        // the call period must to be bigger than 2000 US,
+        // as the bootloader has some message timing requirements.
         return false;
     }
+    _scan.last_us = now;
     switch (_scan.state) {
     case 0:
-        _scan.delay_loops = 500;
-        _scan.state++;
-        return false;
-        break;
-    case 1:
-        if (_scan.delay_loops > 0) {
-            _scan.delay_loops--;
-        } else {
+        if (now > 500000) {
             _scan.state++;
         }
         return false;
         break;
-    case 2:
+    case 1:
         request[0] = OW_OK;
         if (pull_command(_scan.id+1, request, response, return_type::FULL_FRAME, 1)) {
             _found_escs[_scan.id].active = true;
@@ -363,16 +359,30 @@ bool AP_FETtecOneWire::scan_escs()
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _found_escs_count++;
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            _scan.state++;
+#else
+            _scan.state = 5;
+#endif
+            return false;
+        }
+        break;
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+    case 2:
+        request[0] = OW_REQ_TYPE;
+        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+            _found_escs[_scan.id].esc_type = response[0];
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
             _scan.state++;
             return false;
         }
         break;
     case 3:
-        request[0] = OW_REQ_TYPE;
+        request[0] = OW_REQ_SW_VER;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-            _found_escs[_scan.id].esc_type = response[0];
-#endif
+            _found_escs[_scan.id].firmware_version = response[0];
+            _found_escs[_scan.id].firmware_sub_version = response[1];
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
@@ -380,34 +390,20 @@ bool AP_FETtecOneWire::scan_escs()
         }
         break;
     case 4:
-        request[0] = OW_REQ_SW_VER;
-        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-            _found_escs[_scan.id].firmware_version = response[0];
-            _found_escs[_scan.id].firmware_sub_version = response[1];
-#endif
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
-            _scan.state++;
-            return false;
-        }
-        break;
-    case 5:
         request[0] = OW_REQ_SN;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serialNumber[i] = response[i];
             }
-#endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             _scan.state++;
             return false;
         }
         break;
-    case 6:
-        _scan.state = 0;
+#endif
+    case 5:
+        _scan.state = 1;
         _scan.id++; // re-run this state machine with the next ESC ID
         if (_scan.id == MOTOR_COUNT_MAX) {
             _scan.id = 0;
@@ -430,7 +426,7 @@ bool AP_FETtecOneWire::scan_escs()
         if (_scan.trans_retry_cnt > 4) {
             // the request re-transmit failed multiple times, give up this ESC, goto the next one
             _scan.trans_retry_cnt = 0;
-            _scan.state = 6;
+            _scan.state = 5;
         }
     }
     return false;
@@ -690,7 +686,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         uint8_t bits_left_from_command = 7;
         uint8_t act_byte = 2;
         uint8_t bits_from_byte_left = 8;
-        uint16_t bits_to_add_left = (12 + (((_max_id - _min_id) + 1) * 11)) - 16;
+        uint16_t bits_to_add_left = (12 + (_id_count * 11)) - 16;
         while (bits_to_add_left > 0) {
             if (bits_from_byte_left >= bits_left_from_command) {
                 fast_throttle_command[act_byte] |=
