@@ -169,9 +169,9 @@ private:
     /**
         if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
         @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
-        @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+        @param tlm_request the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     */
-    void escs_set_values(const uint16_t *motor_values, const uint8_t tlm_request);
+    void escs_set_values(const uint16_t *motor_values, const int8_t tlm_request);
 
     static constexpr uint8_t SERIAL_NR_BITWIDTH = 12;
 
@@ -210,7 +210,7 @@ private:
     int8_t _max_id;          ///< Zero-indexed ESC ID
     uint8_t _id_count;       ///< number of ESCs fully operational in the OneWire bus and configured by the config_escs() function
     uint8_t _fast_throttle_byte_count;
-    uint8_t _requested_telemetry_from_esc; ///< the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+    int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
     bool _pull_busy;         ///< request-reply transaction is busy

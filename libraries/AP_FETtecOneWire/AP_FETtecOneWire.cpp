@@ -655,9 +655,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 /**
     if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
     @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
-    @param tlm_request the ESC to request telemetry from (0 for no telemetry, 1 for ESC0, 2 for ESC1, 3 for ESC2, ...)
+    @param tlm_request the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
 */
-void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8_t tlm_request)
+void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_t tlm_request)
 {
     if (_id_count > 0) {
         // 8  bits - OneWire Header
@@ -675,7 +675,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         // B = MSB from first throttle value
         // C = frame header
         static_assert(MOTOR_COUNT_MAX<=15, "OneWire supports at most 15 ESCs, because of the 4 bit limitation bellow");
-        fast_throttle_command[0] = tlm_request << 4;
+        fast_throttle_command[0] = (tlm_request+1) << 4;
         fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
         fast_throttle_command[0] |= 0x01;
 
@@ -762,14 +762,13 @@ void AP_FETtecOneWire::update()
     uint16_t tx_err_count = 0; // initialize to prevent false positive error: ‘tx_err_count’ may be used uninitialized in this function
     receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
     uint8_t tlm_from_id = 0;
-    if (_requested_telemetry_from_esc) {
+    if (_requested_telemetry_from_esc != -1) {
         tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
     }
     if (_nr_escs_in_bitmask) {
+        _requested_telemetry_from_esc++;
         if (_requested_telemetry_from_esc == _id_count) { //if found esc number is reached restart request counter
-            _requested_telemetry_from_esc = 1; // restart from the first ESC
-        } else {
-            _requested_telemetry_from_esc++;
+            _requested_telemetry_from_esc = 0; // restart from the first ESC
         }
     }
 #endif
@@ -783,11 +782,11 @@ void AP_FETtecOneWire::update()
 
         inc_send_msg_count(); // increment message packet count for every ESC
 
-        if (_requested_telemetry_from_esc && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
+        if (_requested_telemetry_from_esc != -1 && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
             if (_pole_count < 2) { // if user set parameter is invalid use 14 Poles
                 _pole_count = 14;
             }
-            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc-1, tx_err_count);
+            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc, tx_err_count);
             update_rpm(tlm_from_id-1, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
 
             update_telem_data(tlm_from_id-1, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
