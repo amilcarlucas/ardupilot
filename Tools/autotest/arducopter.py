@@ -2157,6 +2157,12 @@ class AutoTestCopter(AutoTest):
         if not num_wp:
             raise NotAchievedException("load copter_mission failed")
 
+        self.fly_loaded_mission(num_wp)
+
+        self.progress("Auto mission completed: passed!")
+
+    def fly_loaded_mission(self, num_wp):
+        '''fly mission loaded on vehicle.  FIXME: get num_wp from vehicle'''
         self.progress("test: Fly a mission from 1 to %u" % num_wp)
         self.set_current_waypoint(1)
 
@@ -2177,8 +2183,6 @@ class AutoTestCopter(AutoTest):
         # wait for disarm
         self.wait_disarmed()
         self.progress("MOTORS DISARMED OK")
-
-        self.progress("Auto mission completed: passed!")
 
     # fly_auto_test using CAN GPS - fly mission which tests normal operation alongside CAN GPS
     def fly_auto_test_using_can_gps(self):
@@ -6973,6 +6977,16 @@ class AutoTestCopter(AutoTest):
         ret.extend(self.tests1e())
         return ret
 
+    def FETtecESC(self):
+        self.set_parameters({
+            "SERIAL5_PROTOCOL": 38,
+            "SERVO_FTW_MASK": 15,
+            "SIM_FTOWESC_ENA": 1,
+        })
+        self.customise_SITL_commandline(["--uartF=sim:fetteconewireesc"])
+        num_wp = self.load_mission("copter_mission.txt", strict=False)
+        self.fly_loaded_mission(num_wp)
+
     def tests1a(self):
         '''return list of all tests'''
         ret = super(AutoTestCopter, self).tests()  # about 5 mins and ~20 initial tests from autotest/common.py
@@ -7415,6 +7429,10 @@ class AutoTestCopter(AutoTest):
             Test("Replay",
                  "Test Replay",
                  self.test_replay),
+
+            Test("FETtecESC",
+                 "Test FETtecESC",
+                 self.FETtecESC),
 
             Test("GroundEffectCompensation_touchDownExpected",
                  "Test EKF's handling of touchdown-expected",
