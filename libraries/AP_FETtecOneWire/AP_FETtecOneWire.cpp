@@ -173,7 +173,7 @@ void AP_FETtecOneWire::configuration_check()
     }
 #endif
 
-    bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
+    bool scan_missing = _id_count < _nr_escs_in_bitmask;
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
@@ -182,7 +182,7 @@ void AP_FETtecOneWire::configuration_check()
 #endif
     if (scan_missing || telem_rx_missing) {
         if (scan_missing) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _id_count, _nr_escs_in_bitmask);
         }
 #if HAL_WITH_ESC_TELEM
         if (telem_rx_missing) {
@@ -595,7 +595,7 @@ void AP_FETtecOneWire::inc_send_msg_count()
     _send_msg_count++;
     if (_send_msg_count > 4 * _update_rate_hz) { // resets every four seconds
         _send_msg_count = 0; //reset the counter
-        for (int i=0; i<_found_escs_count; i++) {
+        for (int i=0; i<_id_count; i++) {
             _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
         }
     }
@@ -759,7 +759,7 @@ void AP_FETtecOneWire::update()
         tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
     }
     if (_nr_escs_in_bitmask) {
-        if (_requested_telemetry_from_esc == _found_escs_count) { //if found esc number is reached restart request counter
+        if (_requested_telemetry_from_esc == _id_count) { //if found esc number is reached restart request counter
             _requested_telemetry_from_esc = 1; // restart from the first ESC
         } else {
             _requested_telemetry_from_esc++;
@@ -769,7 +769,7 @@ void AP_FETtecOneWire::update()
 
     if (_nr_escs_in_bitmask) {
         // send motor setpoints to ESCs, and request for telemetry data
-        escs_set_values(motor_pwm, _found_escs_count, _requested_telemetry_from_esc);
+        escs_set_values(motor_pwm, _id_count, _requested_telemetry_from_esc);
 
 #if HAL_WITH_ESC_TELEM
         // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
