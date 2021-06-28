@@ -180,6 +180,15 @@ void AP_FETtecOneWire::configuration_check()
     const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
+
+    if (_id_count == 0){
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: No ESCs found");
+    }
+
+    if (_max_id - _min_id > _id_count - 1){
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: Gap in IDs found. Fix first.");
+    }
+
     if (scan_missing || telem_rx_missing) {
         if (scan_missing) {
             GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _id_count, _nr_escs_in_bitmask);
@@ -475,8 +484,7 @@ uint8_t AP_FETtecOneWire::config_escs()
             }
         }
 
-        if (_id_count == 0
-                || _max_id - _min_id > _id_count - 1) { // loop forever
+        if (_id_count == 0 || _max_id - _min_id > _id_count - 1) { // try again, if no ESCs are found or a gap is in ID list. Setup should not started.
             _config.wake_from_bl = 1;
             return _config.active_id;
         }
