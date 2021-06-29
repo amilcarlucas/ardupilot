@@ -341,6 +341,9 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::WAIT_FOR_BOOT:
         _found_escs_count = 0;
         _scan.id = 0;
+        for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
+            _found_escs[i].active = false;
+        }
         if (now > 500000) {
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 //            ::fprintf(stderr, "scan id=%u, state=%u\n", _scan.id, _scan.state);
