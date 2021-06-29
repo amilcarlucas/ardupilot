@@ -794,7 +794,7 @@ void AP_FETtecOneWire::update()
     }
 
     // get ESC set points, stop as soon as there is a gap
-    uint16_t motor_pwm[MOTOR_COUNT_MAX];
+    uint16_t motor_pwm[MOTOR_COUNT_MAX] {};
     for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
         SRV_Channel* c = SRV_Channels::srv_channel(i);
         if (c == nullptr) {
