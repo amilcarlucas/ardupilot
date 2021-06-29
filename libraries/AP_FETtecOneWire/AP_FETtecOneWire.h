@@ -127,6 +127,12 @@ private:
     void scan_escs();
 
     /**
+        configure the fast-throttle command.
+        Should be called once after scan_escs() is completted and before config_escs()
+    */
+    void config_fast_throttle();
+
+    /**
         starts all ESCs in bus and prepares them for receiving the fast throttle command.
         Should be periodically called until _config_active >= MOTOR_COUNT_MAX
         @return the current used ID
@@ -206,9 +212,6 @@ private:
     uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
     uint8_t _set_full_telemetry_retry_count;
 #endif
-    int8_t _min_id;          ///< Zero-indexed ESC ID
-    int8_t _max_id;          ///< Zero-indexed ESC ID
-    uint8_t _fast_throttle_byte_count;
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
@@ -250,6 +253,16 @@ private:
         uint8_t trans_retry_cnt;
     } _scan;
 
+    /// fast-throttle command configuration
+    struct fast_throttle_config
+    {
+        uint16_t bits_to_add_left; ///< bits to add after the header
+        uint8_t command[4];        ///< fast-throttle command frame header bytes
+        uint8_t byte_count;        ///< nr bytes in a fast throttle command
+        uint8_t min_id;            ///< Zero-indexed ESC ID
+        uint8_t max_id;            ///< Zero-indexed ESC ID
+    } _fast_throttle;
+
     /// presistent config state data (only used inside config_escs() function)
     struct config_state
     {
@@ -258,7 +271,6 @@ private:
         uint8_t state;
         uint8_t timeout;
         uint8_t wake_from_bl;
-        uint8_t set_fast_command[4] = {OW_SET_FAST_COM_LENGTH, 0, 0, 0};
     } _config;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases

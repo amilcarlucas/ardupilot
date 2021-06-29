@@ -185,7 +185,7 @@ void AP_FETtecOneWire::configuration_check()
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: No ESCs found");
     }
 
-    if (_max_id - _min_id > _id_count - 1){
+    if (_fast_throttle.max_id - _fast_throttle.min_id > _id_count - 1){
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: Gap in IDs found. Fix first.");
     }
 
@@ -418,6 +418,7 @@ void AP_FETtecOneWire::scan_escs()
             _scan.id = 0;
             if (_found_escs_count) {
                 _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
+                config_fast_throttle();
                 return;
             }
         }
@@ -439,6 +440,40 @@ void AP_FETtecOneWire::scan_escs()
             _scan.state = scan_state_t::NEXT_ID;
         }
     }
+}
+
+/**
+    configure the fast-throttle command.
+    Should be called once after scan_escs() is completted and before config_escs()
+*/
+void AP_FETtecOneWire::config_fast_throttle()
+{
+    _fast_throttle.min_id = MOTOR_COUNT_MAX;
+    _fast_throttle.max_id = 0;
+    _id_count = 0;
+    for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
+        if (_found_escs[i].active) {
+            _id_count++;
+            if (i < _fast_throttle.min_id) {
+                _fast_throttle.min_id = i;
+            }
+            if (i > _fast_throttle.max_id) {
+                _fast_throttle.max_id = i;
+            }
+        }
+    }
+
+    _fast_throttle.byte_count = 1;
+    int16_t bit_count = 12 + (_id_count * 11);
+    _fast_throttle.bits_to_add_left = bit_count - 16;
+    while (bit_count > 0) {
+        _fast_throttle.byte_count++;
+        bit_count -= 8;
+    }
+    _fast_throttle.command[0] = OW_SET_FAST_COM_LENGTH;
+    _fast_throttle.command[1] = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
+    _fast_throttle.command[2] = _fast_throttle.min_id+1;   // min ESC id
+    _fast_throttle.command[3] = _id_count;                 // count of ESCs that will get signals
 }
 
 /**
@@ -471,34 +506,10 @@ uint8_t AP_FETtecOneWire::config_escs()
         _config.state = 0;
         _config.timeout = 0;
 
-        _min_id = MOTOR_COUNT_MAX;
-        _max_id = 0;
-        _id_count = 0;
-        for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-            if (_found_escs[i].active) {
-                _id_count++;
-                if (i < _min_id) {
-                    _min_id = i;
-                }
-                if (i > _max_id) {
-                    _max_id = i;
-                }
-            }
-        }
-
-        if (_id_count == 0 || _max_id - _min_id > _id_count - 1) { // try again, if no ESCs are found or a gap is in ID list. Setup should not started.
+        if (_id_count == 0 || _fast_throttle.max_id - _fast_throttle.min_id > _id_count - 1) { // try again, if no ESCs are found or a gap is in ID list. Setup should not started.
             _config.wake_from_bl = 1;
             return _config.active_id;
         }
-        _fast_throttle_byte_count = 1;
-        int16_t bitCount = 12 + (_id_count * 11);
-        while (bitCount > 0) {
-            _fast_throttle_byte_count++;
-            bitCount -= 8;
-        }
-        _config.set_fast_command[1] = _fast_throttle_byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-        _config.set_fast_command[2] = _min_id+1;                 // min ESC id
-        _config.set_fast_command[3] = _id_count;                 // count of ESCs that will get signals
     }
 
     if (_config.delay_loops > 0) {
@@ -547,7 +558,7 @@ uint8_t AP_FETtecOneWire::config_escs()
                 break;
             }
         } else {
-            if (pull_command(_config.active_id, _config.set_fast_command, response, return_type::RESPONSE, 4)) {
+            if (pull_command(_config.active_id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
                 _config.timeout = 0;
                 _config.delay_loops = 1;
                 return _config.active_id + 1;
@@ -697,7 +708,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         uint8_t bits_left_from_command = 7;
         uint8_t act_byte = 2;
         uint8_t bits_from_byte_left = 8;
-        uint16_t bits_to_add_left = (12 + (_id_count * 11)) - 16;
+        int16_t bits_to_add_left = _fast_throttle.bits_to_add_left; // must be signed
         while (bits_to_add_left > 0) {
             if (bits_from_byte_left >= bits_left_from_command) {
                 fast_throttle_command[act_byte] |=
@@ -726,15 +737,15 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
             }
         }
 
-        fast_throttle_command[_fast_throttle_byte_count - 1] =
-            crc8_dvb_update(0, fast_throttle_command, _fast_throttle_byte_count - 1);
+        fast_throttle_command[_fast_throttle.byte_count - 1] =
+            crc8_dvb_update(0, fast_throttle_command, _fast_throttle.byte_count - 1);
 
         // No command was yet sent, so no reply is expected and all information
         // on the receive buffer is either garbage or noise. Discard it
         _uart->discard_input();
 
         // send throttle commands to all configured ESCs in a single packet transfer
-        _uart->write(fast_throttle_command, _fast_throttle_byte_count);
+        _uart->write(fast_throttle_command, _fast_throttle.byte_count);
     }
 }
 
