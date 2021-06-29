@@ -344,7 +344,7 @@ void AP_FETtecOneWire::scan_escs()
     uint8_t request[1];
 
     const uint32_t now = AP_HAL::micros();
-    if (now - _scan.last_us < 2000U) {
+    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW? 5000U : 2000U)) {
         // the scan_escs() call period must be bigger than 2000 US,
         // as the bootloader has some message timing requirements. And we might be in bootloader
         return;
@@ -360,22 +360,49 @@ void AP_FETtecOneWire::scan_escs()
         }
         return;
         break;
+
     case scan_state_t::IN_BOOTLOADER:
         request[0] = OW_OK;
         if (pull_command(_scan.id+1, request, response, return_type::FULL_FRAME, 1)) {
+            if (!_found_escs[_scan.id].active) {
+                _found_escs_count++; // found a new ESC
+            }
             _found_escs[_scan.id].active = true;
             _found_escs[_scan.id].in_boot_loader = (response[0] == 0x02);
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
-            _found_escs_count++;
+            if (response[0] == 0x02) {
+                _scan.state++; // is in bootloader, must start firmware
+            } else {
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-            _scan.state++;
+                _scan.state = scan_state_t::ESC_TYPE;
 #else
-            _scan.state = scan_state_t::NEXT_ID;
+                _scan.state = scan_state_t::NEXT_ID;
 #endif
+            }
             return;
         }
         break;
+
+    case scan_state_t::START_FW:
+        request[0] = OW_BL_START_FW;
+        transmit(_scan.id+1, request, 1);
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+        ::fprintf(stderr, "scan id=%u, starting FW\n", _scan.id);
+#endif
+        _scan.state++;
+        return;
+        break;
+
+    case scan_state_t::WAIT_START_FW:
+        _uart->discard_input(); // discard the answer to the previous transmit
+        _scan.state = IN_BOOTLOADER;
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+        ::fprintf(stderr, "scan id=%u, will retest if in bootloader\n", _scan.id);
+#endif
+        return;
+        break;
+
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     case scan_state_t::ESC_TYPE:
         request[0] = OW_REQ_TYPE;
@@ -387,6 +414,7 @@ void AP_FETtecOneWire::scan_escs()
             return;
         }
         break;
+
     case scan_state_t::SW_VER:
         request[0] = OW_REQ_SW_VER;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
@@ -398,6 +426,7 @@ void AP_FETtecOneWire::scan_escs()
             return;
         }
         break;
+
     case scan_state_t::SN:
         request[0] = OW_REQ_SN;
         if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
@@ -411,6 +440,7 @@ void AP_FETtecOneWire::scan_escs()
         }
         break;
 #endif
+
     case scan_state_t::NEXT_ID:
         _scan.state = scan_state_t::IN_BOOTLOADER;
         _scan.id++; // re-run this state machine with the next ESC ID
@@ -426,19 +456,21 @@ void AP_FETtecOneWire::scan_escs()
         break;
     }
 
-    _scan.rx_retry_cnt++;
     // it will try twice to read the response of a request
-    if (_scan.rx_retry_cnt > 2) {
+    if (_scan.rx_retry_cnt > 1) {
         _scan.rx_retry_cnt = 0;
 
         pull_reset(); // re-transmit the request, in the hope of getting a valid response later
 
-        _scan.trans_retry_cnt++;
         if (_scan.trans_retry_cnt > 4) {
             // the request re-transmit failed multiple times, give-up on this ESC, goto the next one
             _scan.trans_retry_cnt = 0;
             _scan.state = scan_state_t::NEXT_ID;
+        } else {
+            _scan.trans_retry_cnt++;
         }
+    } else {
+        _scan.rx_retry_cnt++;
     }
 }
 

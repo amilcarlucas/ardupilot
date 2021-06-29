@@ -236,6 +236,8 @@ private:
     enum scan_state_t : uint8_t {
         WAIT_FOR_BOOT,
         IN_BOOTLOADER,
+        START_FW,
+        WAIT_START_FW,
         ESC_TYPE,
         SW_VER,
         SN,
