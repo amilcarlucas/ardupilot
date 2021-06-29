@@ -27,7 +27,8 @@
 
 extern const AP_HAL::HAL& hal;
 
-static constexpr uint32_t DELAY_TIME_US = 700;
+static constexpr uint32_t TRANSACTION_TIME_US = 2000;
+static constexpr uint32_t FW_START_TIME_US = 5000;
 static constexpr uint32_t BAUDRATE = 500000;
 static constexpr uint8_t ALL_ID = 0x1F;
 static constexpr uint8_t FRAME_OVERHEAD = 6;
@@ -323,7 +324,7 @@ void AP_FETtecOneWire::scan_escs()
     uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
-    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW? 5000U : 2000U)) {
+    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? FW_START_TIME_US : TRANSACTION_TIME_US)) {
         // the scan_escs() call period must be bigger than 2000 US,
         // as the bootloader has some message timing requirements. And we might be in bootloader
         return;
