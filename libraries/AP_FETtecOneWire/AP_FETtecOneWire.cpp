@@ -222,7 +222,8 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     byte 6 - X = request type, followed by the payload
     byte X+1 = 8bit CRC
     */
-    uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01, esc_id};
+    uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01};
+    transmit_arr[1] = esc_id+uint8_t(1);
     if (length > MAX_TRANSMIT_LENGTH) {
         length = MAX_TRANSMIT_LENGTH;
     }
@@ -363,7 +364,7 @@ void AP_FETtecOneWire::scan_escs()
 
     case scan_state_t::IN_BOOTLOADER:
         request[0] = OW_OK;
-        if (pull_command(_scan.id+1, request, response, return_type::FULL_FRAME, 1)) {
+        if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
             if (!_found_escs[_scan.id].active) {
                 _found_escs_count++; // found a new ESC
             }
@@ -386,7 +387,7 @@ void AP_FETtecOneWire::scan_escs()
 
     case scan_state_t::START_FW:
         request[0] = OW_BL_START_FW;
-        transmit(_scan.id+1, request, 1);
+        transmit(_scan.id, request, 1);
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
         ::fprintf(stderr, "scan id=%u, starting FW\n", _scan.id);
 #endif
@@ -406,7 +407,7 @@ void AP_FETtecOneWire::scan_escs()
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     case scan_state_t::ESC_TYPE:
         request[0] = OW_REQ_TYPE;
-        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].esc_type = response[0];
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
@@ -417,7 +418,7 @@ void AP_FETtecOneWire::scan_escs()
 
     case scan_state_t::SW_VER:
         request[0] = OW_REQ_SW_VER;
-        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
             _scan.rx_retry_cnt = 0;
@@ -429,7 +430,7 @@ void AP_FETtecOneWire::scan_escs()
 
     case scan_state_t::SN:
         request[0] = OW_REQ_SN;
-        if (pull_command(_scan.id+1, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serialNumber[i] = response[i];
             }
@@ -516,30 +517,20 @@ void AP_FETtecOneWire::config_fast_throttle()
 uint8_t AP_FETtecOneWire::config_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
-    uint8_t request[1];
     if (_config_active == 0) {
         _config.delay_loops = 0;
         _config.active_id = 1;
-        _config.state = 0;
         _config.timeout = 0;
-        _config.wake_from_bl = 1;
         return _config_active + 1;
     }
     while (_found_escs[_config_active-1].active == false && _config_active < MOTOR_COUNT_MAX) {
         _config_active++;
     }
 
-    if (_config_active == MOTOR_COUNT_MAX && _config.wake_from_bl == 0) {
-        return _config_active;
-    } else if (_config_active == MOTOR_COUNT_MAX && _config.wake_from_bl) {
-        _config.wake_from_bl = 0;
-        _config.active_id = 1;
-        _config_active = 1;
-        _config.state = 0;
+    if (_config_active == MOTOR_COUNT_MAX+1) {
         _config.timeout = 0;
 
         if (_id_count == 0 || _fast_throttle.max_id - _fast_throttle.min_id > _id_count - 1) { // try again, if no ESCs are found or a gap is in ID list. Setup should not started.
-            _config.wake_from_bl = 1;
             return _config.active_id;
         }
     }
@@ -551,7 +542,6 @@ uint8_t AP_FETtecOneWire::config_escs()
 
     if (_config.active_id < _config_active) {
         _config.active_id = _config_active;
-        _config.state = 0;
         _config.timeout = 0;
     }
 
@@ -560,43 +550,15 @@ uint8_t AP_FETtecOneWire::config_escs()
     }
 
     if (_config.timeout < 15) {
-        if (_config.wake_from_bl) {
-            switch (_config.state) {
-            case 0:
-                request[0] = OW_BL_START_FW;
-                if (_found_escs[_config.active_id-1].in_boot_loader) {
-                    transmit(_config.active_id, request, 1);
-                    _config.delay_loops = 5;
-                } else {
-                    return _config.active_id + 1;
-                }
-                _config.state = 1;
-                break;
-            case 1:
-                request[0] = OW_OK;
-                if (pull_command(_config.active_id, request, response, return_type::FULL_FRAME, 1)) {
-                    _config.timeout = 0;
-                    if (response[0] == 0x02) {
-                        _found_escs[_config.active_id-1].in_boot_loader = true;
-                        _config.state = 0;
-                    } else {
-                        _found_escs[_config.active_id-1].in_boot_loader = false;
-                        _config.delay_loops = 1;
-                        return _config.active_id + 1;
-                    }
-                } else {
-                    _config.timeout++;
-                }
-                break;
-            }
+        if (pull_command(_config.active_id-1, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
+            _config.timeout = 0;
+            _config.delay_loops = 1;
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+            ::fprintf(stderr, "ESC%u config fast-throttle\n", _config_active-1);
+#endif
+            return _config.active_id + 1;
         } else {
-            if (pull_command(_config.active_id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
-                _config.timeout = 0;
-                _config.delay_loops = 1;
-                return _config.active_id + 1;
-            } else {
-                _config.timeout++;
-            }
+            _config.timeout++;
         }
     } else {
         pull_reset();
@@ -617,7 +579,7 @@ uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
         uint8_t request[2];
         request[0] = OW_SET_TLM_TYPE;
         request[1] = active; //Alternative Tlm => 1, normal TLM => 0
-        bool pull_response = pull_command(_set_full_telemetry_active, request, response, return_type::RESPONSE, 2);
+        bool pull_response = pull_command(_set_full_telemetry_active-1, request, response, return_type::RESPONSE, 2);
         if (pull_response) {
             if(response[0] == OW_OK) {//Ok received or max retries reached.
                 _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.

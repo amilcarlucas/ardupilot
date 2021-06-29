@@ -270,9 +270,7 @@ private:
     {
         uint8_t delay_loops;
         uint8_t active_id;
-        uint8_t state;
         uint8_t timeout;
-        uint8_t wake_from_bl;
     } _config;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
