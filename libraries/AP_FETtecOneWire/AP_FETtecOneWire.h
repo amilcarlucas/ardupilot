@@ -132,21 +132,7 @@ private:
     */
     void config_fast_throttle();
 
-    /**
-        starts all ESCs in bus and prepares them for receiving the fast throttle command.
-        Should be periodically called until _config_active >= MOTOR_COUNT_MAX
-        @return the current used ID
-    */
-    uint8_t config_escs();
-
 #if HAL_WITH_ESC_TELEM
-    /**
-        sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
-        @param active if full telemetry should be used
-        @return returns the response code
-    */
-    uint8_t set_full_telemetry(uint8_t active);
-
     /**
         increment message packet count for every ESC
     */
@@ -194,7 +180,6 @@ private:
 
     FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
     uint32_t _last_config_check_ms;
-    uint32_t _last_send_us;
 #if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
     uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs. Zero-indexed array
@@ -205,13 +190,7 @@ private:
     uint16_t _mask;
     uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus by the scan_escs() function
-    uint8_t _id_count;           ///< number of ESCs fully operational in the OneWire bus and configured by the config_escs() function
 
-    uint8_t _config_active;
-#if HAL_WITH_ESC_TELEM
-    uint8_t _set_full_telemetry_active = 1; ///< to set alternative TLM for every ESC
-    uint8_t _set_full_telemetry_retry_count;
-#endif
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _uart_initialised;  ///< serial UART is fully initialized
@@ -267,14 +246,6 @@ private:
         uint8_t min_id;            ///< Zero-indexed ESC ID
         uint8_t max_id;            ///< Zero-indexed ESC ID
     } _fast_throttle;
-
-    /// presistent config state data (only used inside config_escs() function)
-    struct config_state
-    {
-        uint8_t delay_loops;
-        uint8_t active_id;
-        uint8_t timeout;
-    } _config;
 
     uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
 
