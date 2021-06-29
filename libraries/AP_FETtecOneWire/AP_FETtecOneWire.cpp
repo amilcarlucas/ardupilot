@@ -343,7 +343,7 @@ void AP_FETtecOneWire::scan_escs()
         _scan.id = 0;
         if (now > 500000) {
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-            ::fprintf(stderr, "scan id=%u, state=%u\n", _scan.id, _scan.state);
+//            ::fprintf(stderr, "scan id=%u, state=%u\n", _scan.id, _scan.state);
 #endif
             _scan.state++;
         }
@@ -359,7 +359,7 @@ void AP_FETtecOneWire::scan_escs()
             _found_escs[_scan.id].active = true;
             _found_escs[_scan.id].in_boot_loader = (response[0] == 0x02);
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, bootloader=%u\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state, _found_escs[_scan.id].in_boot_loader);
+//            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, bootloader=%u\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state, _found_escs[_scan.id].in_boot_loader);
 #endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
@@ -380,7 +380,7 @@ void AP_FETtecOneWire::scan_escs()
         request[0] = OW_BL_START_FW;
         transmit(_scan.id, request, 1);
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-        ::fprintf(stderr, "scan id=%u, starting FW\n", _scan.id);
+//        ::fprintf(stderr, "scan id=%u, starting FW\n", _scan.id);
 #endif
         _scan.state++;
         return;
@@ -390,7 +390,7 @@ void AP_FETtecOneWire::scan_escs()
         _uart->discard_input(); // discard the answer to the previous transmit
         _scan.state = IN_BOOTLOADER;
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-        ::fprintf(stderr, "scan id=%u, will retest if in bootloader\n", _scan.id);
+//        ::fprintf(stderr, "scan id=%u, will retest if in bootloader\n", _scan.id);
 #endif
         return;
         break;
