@@ -16,14 +16,11 @@
   Simulator for the FETtecOneWireESC
 
   TODO: if we don't response to the second configuration message the driver does not currently reset
- - we do too much work if we're not gathering static data from the ESC
  - verify the assertion that DMA is required
  - verify prearm checks work if esc telem not compiled in
  - current code structure means we have to wake things from bootloader?
- - stop sending ESCs any message but "boot" if they're in bootloader mode
  - raw_length is used to find the checksum and that's determined from the expected message type rather than the received message type....
  - stop ignoring REQ_TYPE while in bootloader?
- - HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO is busted
  - fix when telemetry is actually sent
  - correct visibility of members in simulation
  - consider "no-pulses" behaviour? (safety switch on)
@@ -247,7 +244,7 @@ void FETtecOneWireESC::handle_config_message_set_tlm_type(ESC &esc)
 
 void FETtecOneWireESC::handle_fast_esc_data()
 {
-    uint8_t id_count = 12;  // should come from autopilot
+    uint8_t id_count = 12; // esc.fast_com.id_count;  // should come from autopilot
 
     // decode first byte - see driver for details
     const uint8_t telem_request = u.buffer[0] >> 4;
@@ -261,7 +258,7 @@ void FETtecOneWireESC::handle_fast_esc_data()
     // decode second byte
     escs[0].pwm |= (u.buffer[1] >> 5) << 7;
     if ((u.buffer[1] & 0b00011111) != 0x1f) {
-        AP_HAL::panic("Unepected 5-bit target id");
+        AP_HAL::panic("Unexpected 5-bit target id");
     }
 
     // decode enough of third byte to complete pwm[0]
@@ -272,7 +269,7 @@ void FETtecOneWireESC::handle_fast_esc_data()
     }
         ::fprintf(stderr, "pwm[%u] out: %u\n", 0, (unsigned)escs[0].pwm);
 
-    // decode remaininder of ESC values
+    // decode remainder of ESC values
     // slides a window across the input buffer, extracting 11-bit ESC values
     // byte_ofs*8 and bit_ofs are added to find current MSB
     uint8_t byte_ofs = 2;
@@ -342,7 +339,7 @@ void FETtecOneWireESC::update_input()
 
     // no config message, so let's see if there's fast PWM input.  We
     // use the first ESC's concept of the fast-com bytes...
-    uint8_t id_count = 12;
+    uint8_t id_count = 12; //esc.fast_com.id_count;
     const uint16_t total_bits_required = 12 + (id_count*11);
     const uint8_t bytes_required = 1 + (total_bits_required + 7) / 8;
 
