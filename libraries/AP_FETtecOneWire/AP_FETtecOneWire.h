@@ -74,7 +74,8 @@ private:
     {
         NO_ANSWER_YET,
         ANSWER_VALID,
-        CRC_MISSMATCH
+        CRC_MISSMATCH,
+        REQ_OVERLENGTH
     };
 
     /**
@@ -92,15 +93,16 @@ private:
         @param esc_id id of the ESC
         @param bytes  8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
         @param length length of the bytes array
+        @return false if length is bigger than MAX_TRANSMIT_LENGTH, true on write success
     */
-    void transmit(const uint8_t esc_id, const uint8_t *bytes, uint8_t length);
+    bool transmit(const uint8_t esc_id, const uint8_t *bytes, uint8_t length);
 
     /**
         reads the FETtec OneWire answer frame of an ESC
         @param bytes 8 bit byte array, where the received answer gets stored in
         @param length the expected answer length
         @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
-        @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
+        @return receive_response enum
     */
     receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
 
@@ -152,7 +154,7 @@ private:
         @param centi_erpm 16bit centi-eRPM value returned from the ESC
         @param tx_err_count Ardupilot->ESC communication CRC error counter
         @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
-        @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
+        @return receive_response enum
     */
     receive_response decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id);
 #endif
@@ -166,8 +168,13 @@ private:
 
     static constexpr uint8_t SERIAL_NR_BITWIDTH = 12;
 
-    typedef struct FETtecOneWireESC
+    class FETtecOneWireESC
     {
+        public:
+#if HAL_WITH_ESC_TELEM
+        uint16_t error_count;                ///< error counter from the ESCs. Zero-indexed array
+        uint16_t error_count_since_overflow; ///< error counter from the ESCs to pass the overflow. Zero-indexed array
+#endif
         bool active;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         uint8_t firmware_version;
@@ -175,14 +182,12 @@ private:
         uint8_t esc_type;
         uint8_t serial_number[SERIAL_NR_BITWIDTH];
 #endif
-    } FETtecOneWireESC_t;
+    } _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
 
-    FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
+    //FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
     uint32_t _last_config_check_ms;
 #if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
-    uint16_t _error_count[MOTOR_COUNT_MAX]; ///< error counter from the ESCs. Zero-indexed array
-    uint16_t _error_count_since_overflow[MOTOR_COUNT_MAX]; ///< error counter from the ESCs to pass the overflow. Zero-indexed array
     uint16_t _send_msg_count; ///< number of fast-throttle commands send by the flight controller
     uint16_t _update_rate_hz;
 #endif
@@ -192,23 +197,23 @@ private:
 
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized
-    bool _uart_initialised;  ///< serial UART is fully initialized
     bool _pull_busy;         ///< request-reply transaction is busy
 
-    enum msg_type
+    enum class msg_type : uint8_t
     {
-        OW_OK = 0,
-        OW_BL_PAGE_CORRECT,   // BL only
-        OW_NOT_OK,
-        OW_BL_START_FW,       // BL only
-        OW_BL_PAGES_TO_FLASH, // BL only
-        OW_REQ_TYPE,
-        OW_REQ_SN,
-        OW_REQ_SW_VER,
-        OW_BEEP = 13,
-        OW_SET_FAST_COM_LENGTH = 26,
-        OW_SET_TLM_TYPE = 27, //1 for alternative telemetry. ESC sends full telem per ESC: Temp, Volt, Current, ERPM, Consumption, CrcErrCount
-        OW_SET_LED_TMP_COLOR = 51,
+        OK                  = 0,
+        BL_PAGE_CORRECT     = 1,  ///< Bootloader only
+        NOT_OK              = 2,
+        BL_START_FW         = 3,  ///< Bootloader only - exit the boot loader and start the standard firmware
+        BL_PAGES_TO_FLASH   = 4,  ///< Bootloader only
+        REQ_TYPE            = 5,  ///< ESC type
+        REQ_SN              = 6,  ///< serial number
+        REQ_SW_VER          = 7,  ///< software version
+        BEEP                = 13, ///< make noise
+        SET_FAST_COM_LENGTH = 26, ///< configure fast-throttle command
+        SET_TLM_TYPE        = 27, ///< telemetry operation mode
+        SIZEOF_RESPONSE_LENGTH,   ///< size of the _response_length array used in the pull_command() function, you can move this one around
+        SET_LED_TMP_COLOR   = 51, ///< msg_type::SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
     };
 
     enum scan_state_t : uint8_t {
@@ -229,11 +234,11 @@ private:
     /// presistent scan state data (only used inside scan_escs() function)
     struct scan_state
     {
-        uint32_t last_us;        ///< last transaction time in microseconds
-        uint8_t id;              ///< Zero-indexed ID of the used ESC
-        uint8_t state;           ///< scan state-machine state
-        uint8_t rx_retry_cnt;    ///< receive retry counter
-        uint8_t trans_retry_cnt; ///< transaction retry counter
+        uint32_t last_us;          ///< last transaction time in microseconds
+        uint8_t id;                ///< Zero-indexed ID of the used ESC
+        uint8_t state;             ///< scan state-machine state
+        uint8_t rx_retry_cnt;      ///< receive retry counter
+        uint8_t trans_retry_cnt;   ///< transaction retry counter
     } _scan;
 
     /// fast-throttle command configuration
@@ -246,8 +251,8 @@ private:
         uint8_t max_id;            ///< Zero-indexed ESC ID
     } _fast_throttle;
 
-    uint8_t _response_length[OW_SET_TLM_TYPE+1]; ///< OW_SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
+    /// response length lookup table, saves 104 bytes of flash and speeds up the pull_command() function
+    uint8_t _response_length[uint8_t(msg_type::SIZEOF_RESPONSE_LENGTH)];
 
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED
-

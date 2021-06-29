@@ -27,19 +27,17 @@
 
 extern const AP_HAL::HAL& hal;
 
-static constexpr uint32_t DELAY_TIME_US = 700;
-static constexpr uint32_t BAUDRATE = 500000;
-static constexpr uint8_t ALL_ID = 0x1F;
 static constexpr uint8_t FRAME_OVERHEAD = 6;
 static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
 static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
 static constexpr uint8_t MAX_RESPONSE_LENGTH = FRAME_OVERHEAD + MAX_RECEIVE_LENGTH;
 
-const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
+const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
+
     // @Param: MASK
-    // @DisplayName: Channel Bitmask
-    // @Description: Enable of FETtec OneWire ESC protocol to specific channels
-    // @Bitmask: 0:Channel1,1:Channel2,2:Channel3,3:Channel4,4:Channel5,5:Channel6,6:Channel7,7:Channel8,8:Channel9,9:Channel10,10:Channel11,11:Channel12,12:Channel13,13:Channel14,14:Channel15,15:Channel16
+    // @DisplayName: Servo Channel Output Bitmask
+    // @Description: Servo channel mask specifying FETtec ESC output.  Set bits must be contiguous.  The SERVOn number is used as the FETtec ESC Id
+    // @Bitmask: 0:SERVO1,1:SERVO2,2:SERVO3,3:SERVO4,4:SERVO5,5:SERVO6,6:SERVO7,7:SERVO8,8:SERVO9,9:SERVO10,10:SERVO11,11:SERVO12,12:SERVO13,13:SERVO14,14:SERVO15,15:SERVO16
     // @RebootRequired: True
     // @User: Standard
     AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask, 0),
@@ -66,34 +64,32 @@ AP_FETtecOneWire::AP_FETtecOneWire()
 #endif
     _singleton = this;
 
-    _response_length[OW_OK] = 1;
-    _response_length[OW_BL_START_FW] = 0;       // BL only
-    _response_length[OW_REQ_TYPE] = 1;
-    _response_length[OW_REQ_SN] = 12;
-    _response_length[OW_REQ_SW_VER] = 2;
-    _response_length[OW_SET_FAST_COM_LENGTH] = 1;
-    _response_length[OW_SET_TLM_TYPE] = 1;
+    _response_length[uint8_t(msg_type::OK)] = 1;
+    _response_length[uint8_t(msg_type::BL_START_FW)] = 0;        // Bootloader only
+    _response_length[uint8_t(msg_type::REQ_TYPE)] = 1;
+    _response_length[uint8_t(msg_type::REQ_SN)] = 12;
+    _response_length[uint8_t(msg_type::REQ_SW_VER)] = 2;
+    _response_length[uint8_t(msg_type::SET_FAST_COM_LENGTH)] = 1;
+    _response_length[uint8_t(msg_type::SET_TLM_TYPE)] = 1;
 }
 
 /**
-  initialize the serial port, scan the OneWire bus, setup the found ESCs
+  initialize the serial port, scan the bus, setup the found ESCs
+
 */
 void AP_FETtecOneWire::init()
 {
-    if (!_uart_initialised) {
+    if (_uart == nullptr) {
         AP_SerialManager& serial_manager = AP::serialmanager();
         _uart = serial_manager.find_serial(AP_SerialManager::SerialProtocol_FETtecOneWire, 0);
         if (_uart) {
             _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
             _uart->set_unbuffered_writes(true);
             _uart->set_blocking_writes(false);
-            _uart->begin(BAUDRATE);
-            _uart_initialised = true;
+            _uart->begin(500000U);
+        } else {
+            return; // no serial port available, so nothing to do here
         }
-    }
-
-    if (_uart == nullptr) {
-        return; // no serial port available, so nothing to do here
     }
 
     if (_scan.state != scan_state_t::DONE) {
@@ -120,7 +116,7 @@ void AP_FETtecOneWire::init()
 
     // count the number of user-configured FETtec ESCs in the bitmask parameter
     for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-        SRV_Channel* c = SRV_Channels::srv_channel(i);
+        const SRV_Channel* c = SRV_Channels::srv_channel(i);
         if (c == nullptr || (smask & 0x01) == 0x00) {
             break;
         }
@@ -153,7 +149,7 @@ void AP_FETtecOneWire::configuration_check()
     }
 #endif
 
-    bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
+    const bool all_escs_found = _found_escs_count >= _nr_escs_in_bitmask;
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
@@ -169,8 +165,8 @@ void AP_FETtecOneWire::configuration_check()
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: Gap in IDs found. Fix first.");
     }
 
-    if (scan_missing || telem_rx_missing) {
-        if (scan_missing) {
+    if (!all_escs_found || telem_rx_missing) {
+        if (!all_escs_found) {
             GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
         }
 #if HAL_WITH_ESC_TELEM
@@ -188,8 +184,9 @@ void AP_FETtecOneWire::configuration_check()
     @param esc_id id of the ESC
     @param bytes 8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
     @param length length of the bytes array (max 4)
+    @return false if length is bigger than MAX_TRANSMIT_LENGTH, true on write success
 */
-void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint8_t length)
+bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint8_t length)
 {
     /*
     a frame looks like:
@@ -203,7 +200,7 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01};
     transmit_arr[1] = esc_id+uint8_t(1);
     if (length > MAX_TRANSMIT_LENGTH) {
-        length = MAX_TRANSMIT_LENGTH;
+        return false; // no, do not send at all
     }
     transmit_arr[4] = length + FRAME_OVERHEAD;
     for (uint8_t i = 0; i < length; i++) {
@@ -211,6 +208,7 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     }
     transmit_arr[length + 5] = crc8_dvb_update(0, transmit_arr, length + 5); // crc
     _uart->write(transmit_arr, length + FRAME_OVERHEAD);
+    return true;
 }
 
 /**
@@ -218,7 +216,7 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     @param bytes 8 bit byte array, where the received answer gets stored in
     @param length the expected answer length
     @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
-    @return 2 on CRC error, 1 if the expected answer frame was there, 0 if dont
+    @return receive_response enum
 */
 AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type return_full_frame)
 {
@@ -233,7 +231,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     */
 
     if (length > MAX_RECEIVE_LENGTH) {
-        length = MAX_RECEIVE_LENGTH;
+        return receive_response::REQ_OVERLENGTH;
     }
     // look for the real answer
     const uint8_t raw_length = FRAME_OVERHEAD + length;
@@ -304,8 +302,7 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
         return_type return_full_frame, const uint8_t req_len)
 {
     if (!_pull_busy) {
-        _pull_busy = true;
-        transmit(esc_id, command, req_len);
+        _pull_busy = transmit(esc_id, command, req_len);
     } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
         _pull_busy = false;
         return true;
@@ -323,7 +320,7 @@ void AP_FETtecOneWire::scan_escs()
     uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
-    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW? 5000U : 2000U)) {
+    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? 5000U : 2000U)) {
         // the scan_escs() call period must be bigger than 2000 US,
         // as the bootloader has some message timing requirements. And we might be in bootloader
         return;
@@ -337,14 +334,14 @@ void AP_FETtecOneWire::scan_escs()
         for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
             _found_escs[i].active = false;
         }
-        if (now > 500000) {
+        if (now > 500000U) {
             _scan.state++;
         }
         return;
         break;
 
     case scan_state_t::IN_BOOTLOADER:
-        request[0] = OW_OK;
+        request[0] = uint8_t(msg_type::OK);
         if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
             if (!_found_escs[_scan.id].active) {
                 _found_escs_count++; // found a new ESC
@@ -366,9 +363,10 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     case scan_state_t::START_FW:
-        request[0] = OW_BL_START_FW;
-        transmit(_scan.id, request, 1);
-        _scan.state++;
+        request[0] = uint8_t(msg_type::BL_START_FW);
+        if (transmit(_scan.id, request, 1)) {
+            _scan.state++;
+        }
         return;
         break;
 
@@ -380,7 +378,7 @@ void AP_FETtecOneWire::scan_escs()
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     case scan_state_t::ESC_TYPE:
-        request[0] = OW_REQ_TYPE;
+        request[0] = uint8_t(msg_type::REQ_TYPE);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].esc_type = response[0];
             _scan.rx_retry_cnt = 0;
@@ -391,7 +389,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     case scan_state_t::SW_VER:
-        request[0] = OW_REQ_SW_VER;
+        request[0] = uint8_t(msg_type::REQ_SW_VER);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
@@ -403,7 +401,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     case scan_state_t::SN:
-        request[0] = OW_REQ_SN;
+        request[0] = uint8_t(msg_type::REQ_SN);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serialNumber[i] = response[i];
@@ -445,8 +443,8 @@ void AP_FETtecOneWire::scan_escs()
 
 #if HAL_WITH_ESC_TELEM
     case scan_state_t::CONFIG_TLM:
-        request[0] = OW_SET_TLM_TYPE;
-        request[1] = 1;
+        request[0] = uint8_t(msg_type::SET_TLM_TYPE);
+        request[1] = 1; // Alternative telemetry mode -> a single ESC sends it's full telem (Temp, Volt, Current, ERPM, Consumption, CrcErrCount) in a single frame
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
@@ -513,7 +511,7 @@ void AP_FETtecOneWire::config_fast_throttle()
         _fast_throttle.byte_count++;
         bit_count -= 8;
     }
-    _fast_throttle.command[0] = OW_SET_FAST_COM_LENGTH;
+    _fast_throttle.command[0] = uint8_t(msg_type::SET_FAST_COM_LENGTH);
     _fast_throttle.command[1] = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
     _fast_throttle.command[2] = _fast_throttle.min_id+1;   // min ESC id
     _fast_throttle.command[3] = _found_escs_count;         // count of ESCs that will get signals
@@ -529,7 +527,7 @@ void AP_FETtecOneWire::inc_send_msg_count()
     if (_send_msg_count > 4 * _update_rate_hz) { // resets every four seconds
         _send_msg_count = 0; //reset the counter
         for (int i=0; i<_found_escs_count; i++) {
-            _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
+            _found_escs[i].error_count_since_overflow = _found_escs[i].error_count; //save the current ESC error state
         }
     }
 }
@@ -542,8 +540,8 @@ void AP_FETtecOneWire::inc_send_msg_count()
 */
 float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t current_error_count)
 {
-    _error_count[esc_id] = current_error_count; //Save the error count to the esc
-    uint16_t corrected_error_count = (uint16_t)((uint16_t)_error_count[esc_id] - (uint16_t)_error_count_since_overflow[esc_id]); //calculates error difference since last overflow.
+    _found_escs[esc_id].error_count = current_error_count; //Save the error count to the esc
+    uint16_t corrected_error_count = (uint16_t)((uint16_t)_found_escs[esc_id].error_count - (uint16_t)_found_escs[esc_id].error_count_since_overflow); //calculates error difference since last overflow.
     return (float)corrected_error_count*_crc_error_rate_factor; //calculates percentage
 }
 
@@ -553,7 +551,7 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
     @param centi_erpm 16bit centi-eRPM value returned from the ESC
     @param tx_err_count Ardupilot->ESC communication CRC error counter
     @param tlm_from_id receives the ID from the ESC that has respond with its telemetry
-    @return 1 if CRC is correct, 2 on CRC mismatch, 0 on waiting for answer
+    @return receive_response enum
 */
 AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id)
 {
@@ -613,7 +611,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         // A = next 3 bits from (11bit) throttle value
         // B = 5bit target ID
         fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
-        fast_throttle_command[1] |= ALL_ID;
+        fast_throttle_command[1] |= 0x1F;      // All IDs
 
         // following bytes are the rest 7 bit of the first (11bit) throttle value,
         // and all bits from all other values, followed by the CRC byte
@@ -669,14 +667,10 @@ void AP_FETtecOneWire::update()
         return; // the rest of this function can only run after fully initted
     }
 
-    if (_uart == nullptr) {
-        return; // no serial port available, so nothing to do here
-    }
-
     // get ESC set points, stop as soon as there is a gap
     uint16_t motor_pwm[MOTOR_COUNT_MAX] {};
     for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
-        SRV_Channel* c = SRV_Channels::srv_channel(i);
+        const SRV_Channel* c = SRV_Channels::srv_channel(i);
         if (c == nullptr) {
             break;
         }
