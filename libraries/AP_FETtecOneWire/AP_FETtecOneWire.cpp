@@ -360,9 +360,8 @@ void AP_FETtecOneWire::scan_escs()
                 _found_escs_count++; // found a new ESC
             }
             _found_escs[_scan.id].active = true;
-            _found_escs[_scan.id].in_boot_loader = (response[0] == 0x02);
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-//            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, bootloader=%u\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state, _found_escs[_scan.id].in_boot_loader);
+//            ::fprintf(stderr, "scan id=%u, rx_ret=%u, trans_ret=%u, state=%u, bootloader=%u\n", _scan.id, _scan.rx_retry_cnt, _scan.trans_retry_cnt, _scan.state, (response[0] == 0x02));
 #endif
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
@@ -448,7 +447,7 @@ void AP_FETtecOneWire::scan_escs()
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
                 ::fprintf(stderr, "scan done. %u ESCs found\n", _found_escs_count);
                 for (uint8_t i = 0; i < MOTOR_COUNT_MAX; ++i) {
-                    ::fprintf(stderr, "ESC%u bootloader=%u, active=%u\n", i, _found_escs[i].in_boot_loader, _found_escs[i].active);
+                    ::fprintf(stderr, "ESC%u active=%u\n", i, _found_escs[i].active);
                 }
 #endif
             }
