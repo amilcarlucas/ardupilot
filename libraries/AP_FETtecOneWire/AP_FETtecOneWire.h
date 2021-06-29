@@ -57,9 +57,9 @@ private:
     AP_HAL::UARTDriver *_uart;
 
 #if HAL_WITH_ESC_TELEM
-    static constexpr uint8_t MOTOR_COUNT_MAX = 4;//ESC_TELEM_MAX_ESCS; /// OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
+    static constexpr uint8_t MOTOR_COUNT_MAX = ESC_TELEM_MAX_ESCS; ///< OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
 #else
-    static constexpr uint8_t MOTOR_COUNT_MAX = 12;                 /// OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
+    static constexpr uint8_t MOTOR_COUNT_MAX = 12;                 ///< OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
 #endif
     AP_Int32 _motor_mask;
     AP_Int8 _pole_count;
@@ -229,11 +229,11 @@ private:
     /// presistent scan state data (only used inside scan_escs() function)
     struct scan_state
     {
-        uint32_t last_us;
-        uint8_t id;
-        uint8_t state;
-        uint8_t rx_retry_cnt;
-        uint8_t trans_retry_cnt;
+        uint32_t last_us;        ///< last transaction time in microseconds
+        uint8_t id;              ///< Zero-indexed ID of the used ESC
+        uint8_t state;           ///< scan state-machine state
+        uint8_t rx_retry_cnt;    ///< receive retry counter
+        uint8_t trans_retry_cnt; ///< transaction retry counter
     } _scan;
 
     /// fast-throttle command configuration
