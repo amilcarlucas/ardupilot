@@ -88,14 +88,6 @@ private:
     void configuration_check();
 
     /**
-        generates used 8 bit CRC for arrays
-        @param buf 8 bit byte array
-        @param buf_len count of bytes that should be used for CRC calculation
-        @return 8 bit CRC
-    */
-    uint8_t get_crc8(const uint8_t *buf, const uint16_t buf_len) const;
-
-    /**
         transmits a FETtec OneWire frame to an ESC
         @param esc_id id of the ESC
         @param bytes  8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload

@@ -202,21 +202,6 @@ void AP_FETtecOneWire::configuration_check()
 }
 
 /**
-    generates used 8 bit CRC for arrays
-    @param buf 8 bit byte array
-    @param buf_len count of bytes that should be used for CRC calculation
-    @return 8 bit CRC
-*/
-uint8_t AP_FETtecOneWire::get_crc8(const uint8_t* buf, const uint16_t buf_len) const
-{
-    uint8_t crc = 0;
-    for (uint16_t i = 0; i < buf_len; i++) {
-        crc = crc8_dvb(buf[i], crc, 0x7);
-    }
-    return (crc);
-}
-
-/**
     transmits a FETtec OneWire frame to an ESC
     @param esc_id id of the ESC
     @param bytes 8 bit array of bytes. Where byte 1 contains the command, and all following bytes can be the payload
@@ -241,7 +226,7 @@ void AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     for (uint8_t i = 0; i < length; i++) {
         transmit_arr[i + 5] = bytes[i];
     }
-    transmit_arr[length + 5] = get_crc8(transmit_arr, length + 5); // crc
+    transmit_arr[length + 5] = crc8_dvb_update(0, transmit_arr, length + 5); // crc
     _uart->write(transmit_arr, length + FRAME_OVERHEAD);
 }
 
@@ -295,7 +280,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
             // empty buffer, we are not expecting any more data now
             _uart->discard_input();
             // check CRC
-            if (get_crc8(receive_buf, raw_length-1u) == receive_buf[raw_length-1u]) {
+            if (crc8_dvb_update(0, receive_buf, raw_length-1u) == receive_buf[raw_length-1u]) {
                 if (return_full_frame == return_type::RESPONSE) {
                     for (uint8_t i = 0; i < length; i++) {
                         bytes[i] = receive_buf[5u + i];
@@ -730,7 +715,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const uint8
         }
 
         fast_throttle_command[_fast_throttle_byte_count - 1] =
-            get_crc8(fast_throttle_command, _fast_throttle_byte_count - 1);
+            crc8_dvb_update(0, fast_throttle_command, _fast_throttle_byte_count - 1);
 
         // No command was yet sent, so no reply is expected and all information
         // on the receive buffer is either garbage or noise. Discard it
