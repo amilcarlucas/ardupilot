@@ -57,7 +57,7 @@ private:
     AP_HAL::UARTDriver *_uart;
 
 #if HAL_WITH_ESC_TELEM
-    static constexpr uint8_t MOTOR_COUNT_MAX = ESC_TELEM_MAX_ESCS; /// OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
+    static constexpr uint8_t MOTOR_COUNT_MAX = 4;//ESC_TELEM_MAX_ESCS; /// OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
 #else
     static constexpr uint8_t MOTOR_COUNT_MAX = 12;                 /// OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
 #endif
