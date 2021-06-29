@@ -121,7 +121,7 @@ private:
     bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame, const uint8_t req_len);
 
     /**
-        scans for ESCs in bus.
+        Scans for all ESCs in bus. Configures fast-throttle and telemetry for the ones found.
         Should be periodically called until _scan.state == scan_state_t::DONE
     */
     void scan_escs();
@@ -242,6 +242,9 @@ private:
         SW_VER,
         SN,
         NEXT_ID,
+        CONFIG_FAST_THROTTLE,
+        CONFIG_TLM,
+        CONFIG_NEXT_ACTIVE_ESC,
         DONE
     };
 

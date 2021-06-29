@@ -336,13 +336,13 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 }
 
 /**
-    scans for ESCs in bus.
+    Scans for all ESCs in bus. Configures fast-throttle and telemetry for the ones found.
     Should be periodically called until _scan.state == scan_state_t::DONE
 */
 void AP_FETtecOneWire::scan_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
-    uint8_t request[1];
+    uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
     if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW? 5000U : 2000U)) {
@@ -448,10 +448,48 @@ void AP_FETtecOneWire::scan_escs()
         if (_scan.id == MOTOR_COUNT_MAX) {
             _scan.id = 0;
             if (_found_escs_count) {
-                _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
+                _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;  // one or more ESCs found, scan is completed, now configure the ESCs found
                 config_fast_throttle();
-                return;
+                _scan.id = _fast_throttle.min_id;
             }
+        }
+        return;
+        break;
+
+    case scan_state_t::CONFIG_FAST_THROTTLE:
+        if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+#if HAL_WITH_ESC_TELEM
+            _scan.state++;
+#else
+            _scan.state = CONFIG_NEXT_ACTIVE_ESC;
+#endif
+            return;
+        }
+        break;
+
+#if HAL_WITH_ESC_TELEM
+    case scan_state_t::CONFIG_TLM:
+        request[0] = OW_SET_TLM_TYPE;
+        request[1] = 1;
+        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
+            _scan.rx_retry_cnt = 0;
+            _scan.trans_retry_cnt = 0;
+            _scan.state++;
+            return;
+        }
+        break;
+#endif
+
+    case scan_state_t::CONFIG_NEXT_ACTIVE_ESC:
+        do {
+            _scan.id++;
+        } while (_scan.id < MOTOR_COUNT_MAX && _found_escs[_scan.id].active == false);
+        _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;
+        if (_scan.id == MOTOR_COUNT_MAX) {
+            _scan.id = 0;
+            _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
         }
         return;
         break;
