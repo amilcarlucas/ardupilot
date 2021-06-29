@@ -168,7 +168,6 @@ private:
 
     typedef struct FETtecOneWireESC
     {
-        bool in_boot_loader;
         bool active;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         uint8_t firmware_version;
