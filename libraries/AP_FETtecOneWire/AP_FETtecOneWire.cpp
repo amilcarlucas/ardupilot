@@ -258,8 +258,8 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         length = MAX_RECEIVE_LENGTH;
     }
     // look for the real answer
-    const uint32_t raw_length = FRAME_OVERHEAD + length;
-    if (_uart->available() >= raw_length) {
+    const uint8_t raw_length = FRAME_OVERHEAD + length;
+    if (_uart->available() >= uint32_t(raw_length)) {
         // sync to frame start byte
         uint8_t test_frame_start;
         uint8_t head = 0; // nr of attempts at finding the frame start byte
@@ -276,7 +276,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
         }
         while (_uart->available());
         // copy message
-        if (_uart->available() >= raw_length-1u) {
+        if (_uart->available() >= uint32_t(raw_length-1u)) {
             uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
             receive_buf[0] = test_frame_start;
             for (uint8_t i = 1; i < raw_length; i++) {
