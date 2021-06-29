@@ -307,8 +307,5 @@ private:
         uint8_t max_id;            ///< Zero-indexed ESC ID
     } _fast_throttle;
 
-    /// response length lookup table, saves 104 bytes of flash and speeds up the pull_command() function
-    uint8_t _response_length[uint8_t(msg_type::SIZEOF_RESPONSE_LENGTH)];
-
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED

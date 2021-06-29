@@ -71,16 +71,6 @@ AP_FETtecOneWire::AP_FETtecOneWire()
     }
 #endif
     _singleton = this;
-
-    _response_length[uint8_t(msg_type::OK)] = 1;
-    _response_length[uint8_t(msg_type::BL_START_FW)] = 0;        // Bootloader only
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-    _response_length[uint8_t(msg_type::REQ_TYPE)] = 1;
-    _response_length[uint8_t(msg_type::REQ_SN)] = 12;
-    _response_length[uint8_t(msg_type::REQ_SW_VER)] = 2;
-#endif
-    _response_length[uint8_t(msg_type::SET_FAST_COM_LENGTH)] = 1;
-    _response_length[uint8_t(msg_type::SET_TLM_TYPE)] = 1;
 }
 
 /**
@@ -355,11 +345,38 @@ AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const uint8_t esc_id
 {
     if (!_pull_busy) {
         _pull_busy = transmit(esc_id, command, req_len);
-    } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
-        _scan.rx_try_cnt = 0;
-        _scan.trans_try_cnt = 0;
-        _pull_busy = false;
-        return pull_state::COMPLETED;
+    } else {
+        uint8_t response_length = 0;
+        switch(msg_type(command[0])) {
+            case msg_type::OK:
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            case msg_type::REQ_TYPE:
+#endif
+            case msg_type::SET_FAST_COM_LENGTH:
+            case msg_type::SET_TLM_TYPE:
+                response_length = 1;
+            break;
+            case msg_type::BL_START_FW:
+                response_length = 0;
+            break;
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            case msg_type::REQ_SN:
+                response_length = 12;
+            break;
+            case msg_type::REQ_SW_VER:
+                response_length = 2;
+            break;
+#endif
+            default:
+                response_length = 0;
+            break;
+        }
+        if (receive(response, response_length, return_full_frame) == receive_response::ANSWER_VALID) {
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
+            _pull_busy = false;
+            return pull_state::COMPLETED;
+        }
     }
 
     // it will try multiple times to read the response of a request
