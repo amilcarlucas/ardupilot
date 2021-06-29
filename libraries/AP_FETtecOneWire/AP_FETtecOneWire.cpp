@@ -101,27 +101,7 @@ void AP_FETtecOneWire::init()
         return;
     }
 
-    const uint32_t now = AP_HAL::micros();
-    if (now - _last_send_us < DELAY_TIME_US) {
-        // config_escs(), and set_full_telemetry() are to be called periodically multiple times
-        // but the call period must to be bigger than DELAY_TIME_US,
-        // as the bootloader has some message timing requirements.
-        return;
-    }
-    _last_send_us = now;
-
-    if (_config_active <= MOTOR_COUNT_MAX) {
-        // check if in bootloader, start ESCs FW if they are and prepare fast-throttle command
-        _config_active = config_escs();
-        return;
-    }
-
 #if HAL_WITH_ESC_TELEM
-    if (_set_full_telemetry_active <= MOTOR_COUNT_MAX) {
-        // set telemetry to alternative mode (full telemetry from a single ESC, in a single response packet)
-        _set_full_telemetry_active = set_full_telemetry(1);
-        return;
-    }
     _update_rate_hz = AP::scheduler().get_loop_rate_hz();
     _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
 #endif
@@ -173,7 +153,7 @@ void AP_FETtecOneWire::configuration_check()
     }
 #endif
 
-    bool scan_missing = _id_count < _nr_escs_in_bitmask;
+    bool scan_missing = _found_escs_count < _nr_escs_in_bitmask;
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
@@ -181,26 +161,24 @@ void AP_FETtecOneWire::configuration_check()
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
-    if (_id_count == 0){
+    if (_found_escs_count == 0){
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: No ESCs found");
     }
 
-    if (_fast_throttle.max_id - _fast_throttle.min_id > _id_count - 1){
+    if (_fast_throttle.max_id - _fast_throttle.min_id > _found_escs_count - 1){
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: Gap in IDs found. Fix first.");
     }
 
     if (scan_missing || telem_rx_missing) {
         if (scan_missing) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _id_count, _nr_escs_in_bitmask);
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
         }
 #if HAL_WITH_ESC_TELEM
         if (telem_rx_missing) {
             GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
         }
-        _set_full_telemetry_active = 1;
 #endif
         _scan.state = scan_state_t::WAIT_FOR_BOOT;
-        _config_active = 0;
         _initialised = false;
     }
 }
@@ -521,10 +499,8 @@ void AP_FETtecOneWire::config_fast_throttle()
 {
     _fast_throttle.min_id = MOTOR_COUNT_MAX;
     _fast_throttle.max_id = 0;
-    _id_count = 0;
     for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
         if (_found_escs[i].active) {
-            _id_count++;
             if (i < _fast_throttle.min_id) {
                 _fast_throttle.min_id = i;
             }
@@ -535,7 +511,7 @@ void AP_FETtecOneWire::config_fast_throttle()
     }
 
     _fast_throttle.byte_count = 1;
-    int16_t bit_count = 12 + (_id_count * 11);
+    int16_t bit_count = 12 + (_found_escs_count * 11);
     _fast_throttle.bits_to_add_left = bit_count - 16;
     while (bit_count > 0) {
         _fast_throttle.byte_count++;
@@ -544,102 +520,10 @@ void AP_FETtecOneWire::config_fast_throttle()
     _fast_throttle.command[0] = OW_SET_FAST_COM_LENGTH;
     _fast_throttle.command[1] = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
     _fast_throttle.command[2] = _fast_throttle.min_id+1;   // min ESC id
-    _fast_throttle.command[3] = _id_count;                 // count of ESCs that will get signals
-}
-
-/**
-    starts all ESCs in bus and prepares them for receiving the fast throttle command.
-    Should be periodically called until _config_active >= MOTOR_COUNT_MAX
-    @return the current used ID
-*/
-uint8_t AP_FETtecOneWire::config_escs()
-{
-    uint8_t response[MAX_RESPONSE_LENGTH];
-    if (_config_active == 0) {
-        _config.delay_loops = 0;
-        _config.active_id = 1;
-        _config.timeout = 0;
-        return _config_active + 1;
-    }
-    while (_found_escs[_config_active-1].active == false && _config_active < MOTOR_COUNT_MAX) {
-        _config_active++;
-    }
-
-    if (_config_active == MOTOR_COUNT_MAX+1) {
-        _config.timeout = 0;
-
-        if (_id_count == 0 || _fast_throttle.max_id - _fast_throttle.min_id > _id_count - 1) { // try again, if no ESCs are found or a gap is in ID list. Setup should not started.
-            return _config.active_id;
-        }
-    }
-
-    if (_config.delay_loops > 0) {
-        _config.delay_loops--;
-        return _config_active;
-    }
-
-    if (_config.active_id < _config_active) {
-        _config.active_id = _config_active;
-        _config.timeout = 0;
-    }
-
-    if (_config.timeout == 3 || _config.timeout == 6 || _config.timeout == 9 || _config.timeout == 12) {
-        pull_reset();
-    }
-
-    if (_config.timeout < 15) {
-        if (pull_command(_config.active_id-1, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
-            _config.timeout = 0;
-            _config.delay_loops = 1;
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-            ::fprintf(stderr, "ESC%u config fast-throttle\n", _config_active-1);
-#endif
-            return _config.active_id + 1;
-        } else {
-            _config.timeout++;
-        }
-    } else {
-        pull_reset();
-        return _config.active_id + 1;
-    }
-    return _config.active_id;
+    _fast_throttle.command[3] = _found_escs_count;         // count of ESCs that will get signals
 }
 
 #if HAL_WITH_ESC_TELEM
-/**
-    sets the telemetry mode to full mode, where one ESC answers with all telem values including CRC Error count and a CRC
-    @return returns the response code
-*/
-uint8_t AP_FETtecOneWire::set_full_telemetry(uint8_t active)
-{
-    if (_found_escs[_set_full_telemetry_active-1].active) { //If ESC is detected at this ID
-        uint8_t response[1];
-        uint8_t request[2];
-        request[0] = OW_SET_TLM_TYPE;
-        request[1] = active; //Alternative Tlm => 1, normal TLM => 0
-        bool pull_response = pull_command(_set_full_telemetry_active-1, request, response, return_type::RESPONSE, 2);
-        if (pull_response) {
-            if(response[0] == OW_OK) {//Ok received or max retries reached.
-                _set_full_telemetry_active++;   //If answer from ESC is OK, increase ID.
-                _set_full_telemetry_retry_count = 0; //Reset retry count for new ESC ID
-            } else {
-                _set_full_telemetry_retry_count++; //No OK received, increase retry count
-            }
-        } else {
-
-            _set_full_telemetry_retry_count++;
-            if (_set_full_telemetry_retry_count > 128) { //It is important to have the correct telemetry set so start over if there is something wrong.
-                _pull_busy = false;
-                _set_full_telemetry_active = 1;
-                _set_full_telemetry_retry_count = 0;
-            }
-        }
-    } else { //If there is no ESC detected skip it.
-        _set_full_telemetry_active++;
-    }
-    return _set_full_telemetry_active;
-}
-
 /**
     increment message packet count for every ESC
 */
@@ -648,7 +532,7 @@ void AP_FETtecOneWire::inc_send_msg_count()
     _send_msg_count++;
     if (_send_msg_count > 4 * _update_rate_hz) { // resets every four seconds
         _send_msg_count = 0; //reset the counter
-        for (int i=0; i<_id_count; i++) {
+        for (int i=0; i<_found_escs_count; i++) {
             _error_count_since_overflow[i] = _error_count[i]; //save the current ESC error state
         }
     }
@@ -678,7 +562,7 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
 AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id)
 {
     receive_response ret = receive_response::NO_ANSWER_YET;
-    if (_id_count > 0) {
+    if (_found_escs_count > 0) {
         uint8_t telem[FRAME_OVERHEAD + 11];
         ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME);
 
@@ -708,7 +592,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 */
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_t tlm_request)
 {
-    if (_id_count > 0) {
+    if (_found_escs_count > 0) {
         // 8  bits - OneWire Header
         // 4  bits - telemetry request
         // 11 bits - throttle value per ESC
@@ -816,7 +700,7 @@ void AP_FETtecOneWire::update()
     }
     if (_nr_escs_in_bitmask) {
         _requested_telemetry_from_esc++;
-        if (_requested_telemetry_from_esc == _id_count) { //if found esc number is reached restart request counter
+        if (_requested_telemetry_from_esc == _found_escs_count) { //if found esc number is reached restart request counter
             _requested_telemetry_from_esc = 0; // restart from the first ESC
         }
     }
