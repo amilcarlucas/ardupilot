@@ -709,7 +709,7 @@ void AP_FETtecOneWire::update()
             if (_pole_count < 2) { // if user set parameter is invalid use 14 Poles
                 _pole_count = 14;
             }
-            const float tx_err_rate = calc_tx_crc_error_perc(_requested_telemetry_from_esc, tx_err_count);
+            const float tx_err_rate = calc_tx_crc_error_perc(tlm_from_id, tx_err_count);
             update_rpm(tlm_from_id, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
 
             update_telem_data(tlm_from_id, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
