@@ -31,6 +31,9 @@ For purchase, connection and configuration information please see the [Ardupilot
 
 The FETtec OneWire protocol supports up to 24 ESCs. As most copters only use at most 12 motors, Ardupilot's implementation supports only 12 to save memory.
 
+On this device driver the `SERVO_FTW_MASK` parameter must contain a single contiguous block of bits set, and bit0 (zero-indexed) must be a part of that set.
+The ESC IDs (one-indexed) set on the ESCs must also be a single contiguous block, but it can start at an ID different from 1. The max ID must be lower than 12.
+
 There are two types of messages sent to the ESCs:
 
 ### Configuration message
@@ -100,7 +103,7 @@ The telemetry can be switched to "per ESC" Mode, where one ESC answers with it's
 To use this mode, `msg_type::SET_TLM_TYPE` is send to each ESC while initializing.
 If this was successful set the ESC response with `msg_type::OK`.
 
-The answer is packed inside a OW package, that can be received with the FETtecOneWire::receive function, that also checks the CRC.
+The answer is packed inside a OneWire package, that can be received with the `FETtecOneWire::receive()` function, that also checks the CRC.
 
 As the packages are send in an uInt8_t array the values must be restored like as only temp is one byte long:
 
