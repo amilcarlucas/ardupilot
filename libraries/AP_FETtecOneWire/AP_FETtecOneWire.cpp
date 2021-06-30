@@ -36,7 +36,7 @@ static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
 static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
 static constexpr uint8_t MAX_RESPONSE_LENGTH = FRAME_OVERHEAD + MAX_RECEIVE_LENGTH;
 
-const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] = {
+const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
     // @Param: MASK
     // @DisplayName: Channel Bitmask
     // @Description: Enable of FETtec OneWire ESC protocol to specific channels
@@ -158,7 +158,9 @@ void AP_FETtecOneWire::configuration_check()
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-    const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
+    const uint16_t active_esc_mask = AP::esc_telem().get_active_esc_mask();
+    const uint8_t num_active_escs = __builtin_popcount(active_esc_mask & _mask);
+
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
