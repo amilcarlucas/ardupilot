@@ -162,23 +162,24 @@ void AP_FETtecOneWire::configuration_check()
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
-    if (_found_escs_count == 0){
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: No ESCs found");
+    if (__builtin_popcount(_motor_mask.get()) != _nr_escs_in_bitmask) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in SERVO_FTW_MASK paramter bits");
     }
 
     if (_fast_throttle.max_id - _fast_throttle.min_id > _found_escs_count - 1){
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: Gap in IDs found. Fix first.");
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in IDs found");
     }
 
     if (!all_escs_found || telem_rx_missing) {
         if (!all_escs_found) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
         }
 #if HAL_WITH_ESC_TELEM
         if (telem_rx_missing) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
         }
 #endif
+        // re-init the entire device driver
         _scan.state = scan_state_t::WAIT_FOR_BOOT;
         _initialised = false;
     }
