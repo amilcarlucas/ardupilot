@@ -580,11 +580,10 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
         ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME);
 
         if (ret == receive_response::ANSWER_VALID) {
-            if (telem[1] > 0 && telem[1] <=  MOTOR_COUNT_MAX) {
-                tlm_from_id = (uint8_t)telem[1]-1;
-            } else {
-                tlm_from_id = 0;
+            if (telem[1] <= _fast_throttle.min_id || telem[1] > _fast_throttle.max_id+1) {
+                return receive_response::NO_ANSWER_YET; // this data came from an unexpected ESC
             }
+            tlm_from_id = (uint8_t)telem[1]-1; // convert external ESC's one-indexed IDs to Ardupilot's internal zero-indexed IDs
 
             t.temperature_cdeg = int16_t(telem[5+0] * 100);
             t.voltage = float((telem[5+1]<<8)|telem[5+2]) * 0.01f;
