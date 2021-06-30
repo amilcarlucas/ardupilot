@@ -185,7 +185,9 @@ void AP_FETtecOneWire::configuration_check()
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-    const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_motor_mask);
+    const uint16_t active_esc_mask = AP::esc_telem().get_active_esc_mask();
+    const uint8_t num_active_escs = __builtin_popcount(active_esc_mask & _motor_mask);
+
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
