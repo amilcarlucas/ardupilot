@@ -24,6 +24,11 @@
 #define HAL_AP_FETTEC_ONEWIRE_ENABLED !HAL_MINIMIZE_FEATURES && !defined(HAL_BUILD_AP_PERIPH) && BOARD_FLASH_SIZE > 1024
 #endif
 
+// Support both full-duplex at 500Kbit/s as well as half-duplex at 2Mbit/s (optional feature)
+#ifndef HAL_AP_FETTEC_HALF_DUPLEX
+#define HAL_AP_FETTEC_HALF_DUPLEX 0
+#endif
+
 // Get static info from the ESCs (optional feature)
 #ifndef HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
 #define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 0
@@ -231,6 +236,11 @@ private:
     uint8_t _configured_escs;    ///< number of ESCs fully configured by the scan_escs() function, might be smaller than _found_escs_count
 
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    uint8_t _ignore_own_bytes; ///< bytes to ignore while receiving, because we have transmitted them ourselves
+    uint8_t _last_crc;       ///< the CRC from the last sent fast-throttle command
+    bool _use_hdplex;        ///< use asynchronous half-duplex serial communication
+#endif
     bool _initialised;       ///< device driver and ESCs are fully initialized
     bool _pull_busy;         ///< request-reply transaction is busy
 
