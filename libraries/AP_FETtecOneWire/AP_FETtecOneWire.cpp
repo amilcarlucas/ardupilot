@@ -96,7 +96,18 @@ void AP_FETtecOneWire::init()
             _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
             _uart->set_unbuffered_writes(true);
             _uart->set_blocking_writes(false);
+#if HAL_AP_FETTEC_HALF_DUPLEX
+            if (_uart->get_options() & _uart->OPTION_HDPLEX) { //Half-Duplex is enabled
+                _use_hdplex = true;
+                _uart->begin(2000000U);
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Half-Duplex");
+            } else {
+                _uart->begin(500000U);
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Full-Duplex");
+            }
+#else
             _uart->begin(500000U);
+#endif
         } else {
             return; // no serial port available, so nothing to do here
         }
@@ -236,6 +247,11 @@ bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     }
     transmit_arr[length + 5] = crc8_dvb_update(0, transmit_arr, length + 5); // crc
     _uart->write(transmit_arr, length + FRAME_OVERHEAD);
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    if (_use_hdplex) {
+        _ignore_own_bytes += length + 6;
+    }
+#endif
     return true;
 }
 
@@ -261,6 +277,17 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     if (length > MAX_RECEIVE_LENGTH) {
         return receive_response::REQ_OVERLENGTH;
     }
+
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    //ignore own bytes
+    if (_use_hdplex) {
+        while (_ignore_own_bytes > 0 && _uart->available()) {
+            _ignore_own_bytes--;
+            _uart->read();
+        }
+    }
+#endif
+
     // look for the real answer
     const uint8_t raw_length = FRAME_OVERHEAD + length;
     if (_uart->available() >= uint32_t(raw_length)) {
@@ -709,6 +736,15 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         fast_throttle_command[_fast_throttle.byte_count - 1] =
             crc8_dvb_update(0, fast_throttle_command, _fast_throttle.byte_count - 1);
 
+#if HAL_AP_FETTEC_HALF_DUPLEX
+        // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
+        if (_use_hdplex) {
+            _ignore_own_bytes = _fast_throttle.byte_count - 1;
+        }
+
+        _last_crc = fast_throttle_command[_fast_throttle.byte_count - 1];
+#endif
+
         // No command was yet sent, so no reply is expected and all information
         // on the receive buffer is either garbage or noise. Discard it
         _uart->discard_input();
@@ -799,6 +835,11 @@ void AP_FETtecOneWire::beep(const uint8_t beep_frequency)
             transmit(i, request, sizeof(request));
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
             _uart->write(spacer, sizeof(spacer));
+#if HAL_AP_FETTEC_HALF_DUPLEX
+            if (_use_hdplex) {
+                _ignore_own_bytes += 2;
+            }
+#endif
         }
     }
 }
@@ -820,6 +861,11 @@ void AP_FETtecOneWire::led_color(const uint8_t r, const uint8_t g, const uint8_t
             transmit(i, request, sizeof(request));
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
             _uart->write(spacer, sizeof(spacer));
+#if HAL_AP_FETTEC_HALF_DUPLEX
+            if (_use_hdplex) {
+                _ignore_own_bytes += 2;
+            }
+#endif
         }
     }
 }
