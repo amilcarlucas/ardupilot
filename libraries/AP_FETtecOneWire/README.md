@@ -35,18 +35,19 @@ There are two types of messages sent to the ESCs:
     Byte 1 is the telemetry request and part of fast throttle signal
     Byte N is CRC (last Byte after the Payload). It uses the same CRC algorithm as Dshot.
 ```
-    The first two bytes are frame header and telemetry request as well as the first parts of the throttle signal.
-    The following bytes are transmitting the throttle signals for the ESCs (11bit per ESC) followed by the CRC.
-    The signal is used to transfer the eleven bit throttle signals with as few bytes as possible:
-```
-       [0    ..  980] - negative throttle, rotation in one direction (depends on the motor wiring connection). 0 minimum throttle, 980 maximum throttle
-       [981  .. 1019] - no rotation, dead-band
-       [1020 .. 2000] - positive throttle, rotation in the other direction. 1020 minimum throttle, 2000 maximum throttle
-```
-    All motors wait for the complete message with all throttle signals before changing their output.
+The first two bytes are frame header and telemetry request as well as the first parts of the throttle signal.
+The following bytes are transmitting the throttle signals for the ESCs (11bit per ESC) followed by the CRC.
+The signal is used to transfer the eleven bit throttle signals with as few bytes as possible:
 
-    If telemetry is requested the ESCs will answer them in the ESC-ID order.
-    See *ESC to Ardupilot Protocol* section below and comments in `FETtecOneWire.cpp` for details.
+```
+    [0    ..  980] - negative throttle, rotation in one direction (depends on the motor wiring connection). 0 minimum throttle, 980 maximum throttle
+    [981  .. 1019] - no rotation, dead-band
+    [1020 .. 2000] - positive throttle, rotation in the other direction. 1020 minimum throttle, 2000 maximum throttle
+```
+All motors wait for the complete message with all throttle signals before changing their output.
+
+If telemetry is requested the ESCs will answer them in the ESC-ID order.
+See *ESC to Ardupilot Protocol* section below and comments in `FETtecOneWire.cpp` for details.
 
 
 ### Timing
@@ -84,12 +85,15 @@ If this was successful set the ESC response with `msg_type::OK`.
 The answer is packed inside a OW package, that can be received with the FETtecOneWire::receive function, that also checks the CRC.
 
 As the packages are send in an uInt8_t array the values must be restored like as only temp is one byte long:
-        Telemetry[0]= telem[0]; //Temp
-        Telemetry[1]=(telem[1]<<8)|telem[2];//Volt
-        Telemetry[2]=(telem[3]<<8)|telem[4];//Current
-        Telemetry[3]=(telem[5]<<8)|telem[6];//ERPM
-        Telemetry[4]=(telem[7]<<8)|telem[8];//Consumption
-        Telemetry[5]=(telem[9]<<8)|telem[10];//CRCerr
+
+```C++
+    Telemetry[0]= telem[0];              // Temperature [°C/10]
+    Telemetry[1]=(telem[1]<<8)|telem[2]; // Voltage [V/10]
+    Telemetry[2]=(telem[3]<<8)|telem[4]; // Current [A/10]
+    Telemetry[3]=(telem[5]<<8)|telem[6]; // ERPM/100 (must be divided by number of motor poles to translate to propeller RPM)
+    Telemetry[4]=(telem[7]<<8)|telem[8]; // Consumption [mA.h]
+    Telemetry[5]=(telem[9]<<8)|telem[10];// CRC error (ArduPilot->ESC) counter
+```
 
 
 
