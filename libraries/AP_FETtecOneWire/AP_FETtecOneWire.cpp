@@ -102,27 +102,32 @@ void AP_FETtecOneWire::init()
     _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
 #endif
 
-    static_assert(MOTOR_COUNT_MAX <= 16, "16bit bitmasks are too narrow for MOTOR_COUNT_MAX ESCs");
-
     // get the user-configured FETtec ESCs bitmask parameter
     // if the user changes this parameter, he will have to reboot
     _mask = uint16_t(_motor_mask.get());
-
-    // tell SRV_Channels about ESC capabilities
-    SRV_Channels::set_digital_outputs(_mask, 0);
-
     uint16_t smask = _mask; // shifted version of the _mask user parameter
-    _nr_escs_in_bitmask = 0;
+    uint16_t mmask = 0;     // will be a copy of _mask with only the contiguous LSBs set
 
-    // count the number of user-configured FETtec ESCs in the bitmask parameter
+    static_assert(MOTOR_COUNT_MAX <= sizeof(_mask)*8, "_mask is too narrow for MOTOR_COUNT_MAX ESCs");
+    static_assert(MOTOR_COUNT_MAX <= sizeof(smask)*8, "smask is too narrow for MOTOR_COUNT_MAX ESCs");
+    static_assert(MOTOR_COUNT_MAX <= sizeof(mmask)*8, "mmask is too narrow for MOTOR_COUNT_MAX ESCs");
+
+    _nr_escs_in_bitmask = 0;
+    // count the number of contiguous user-configured FETtec ESCs in the bitmask parameter
     for (uint8_t i = 0; i < MOTOR_COUNT_MAX; i++) {
-        const SRV_Channel* c = SRV_Channels::srv_channel(i);
-        if (c == nullptr || (smask & 0x01) == 0x00) {
+        if ((smask & 0x01) == 0x00) {
             break;
         }
         smask >>= 1;
         _nr_escs_in_bitmask++;
+
+        // build a copy of _mask with only the contiguous LSBs set
+        mmask |= 0x1;
+        mmask <<= 1;
     }
+
+    // tell SRV_Channels about ESC capabilities
+    SRV_Channels::set_digital_outputs(mmask, 0);
 
     _initialised = true;
 }
