@@ -352,15 +352,15 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::IN_BOOTLOADER:
         request[0] = uint8_t(msg_type::OK);
         if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
-            if (!_found_escs[_scan.id].active) {
-                _found_escs_count++; // found a new ESC
-            }
-            _found_escs[_scan.id].active = true;
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
             if (response[0] == 0x02) {
                 _scan.state++; // is in bootloader, must start firmware
             } else {
+                if (!_found_escs[_scan.id].active) {
+                    _found_escs_count++; // found a new ESC not in bootloader
+                }
+                _found_escs[_scan.id].active = true;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
                 _scan.state = scan_state_t::ESC_TYPE;
 #else
