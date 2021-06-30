@@ -333,6 +333,8 @@ void AP_FETtecOneWire::scan_escs()
     _scan.last_us = now;
 
     switch (_scan.state) {
+
+    // initial state, wait for a ESC(s) cold-start
     case scan_state_t::WAIT_FOR_BOOT:
         _found_escs_count = 0;
         _scan.id = 0;
@@ -345,6 +347,7 @@ void AP_FETtecOneWire::scan_escs()
         return;
         break;
 
+    // is bootloader running?
     case scan_state_t::IN_BOOTLOADER:
         request[0] = uint8_t(msg_type::OK);
         if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
@@ -367,6 +370,7 @@ void AP_FETtecOneWire::scan_escs()
         }
         break;
 
+    // start the firmware
     case scan_state_t::START_FW:
         request[0] = uint8_t(msg_type::BL_START_FW);
         if (transmit(_scan.id, request, 1)) {
@@ -375,6 +379,7 @@ void AP_FETtecOneWire::scan_escs()
         return;
         break;
 
+    // wait for the firmware to start
     case scan_state_t::WAIT_START_FW:
         _uart->discard_input(); // discard the answer to the previous transmit
         _scan.state = IN_BOOTLOADER;
@@ -382,6 +387,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+    // ask the ESC type
     case scan_state_t::ESC_TYPE:
         request[0] = uint8_t(msg_type::REQ_TYPE);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
@@ -393,6 +399,7 @@ void AP_FETtecOneWire::scan_escs()
         }
         break;
 
+    // ask the software version
     case scan_state_t::SW_VER:
         request[0] = uint8_t(msg_type::REQ_SW_VER);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
@@ -405,6 +412,7 @@ void AP_FETtecOneWire::scan_escs()
         }
         break;
 
+    // ask the serial number
     case scan_state_t::SN:
         request[0] = uint8_t(msg_type::REQ_SN);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
@@ -419,6 +427,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 #endif
 
+    // increment ESC ID and jump to IN_BOOTLOADER
     case scan_state_t::NEXT_ID:
         _scan.state = scan_state_t::IN_BOOTLOADER;
         _scan.id++; // re-run this state machine with the next ESC ID
@@ -433,6 +442,7 @@ void AP_FETtecOneWire::scan_escs()
         return;
         break;
 
+    // configure fast-throttle command header
     case scan_state_t::CONFIG_FAST_THROTTLE:
         if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
             _scan.rx_retry_cnt = 0;
@@ -447,6 +457,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
 #if HAL_WITH_ESC_TELEM
+    // configure telemetry mode
     case scan_state_t::CONFIG_TLM:
         request[0] = uint8_t(msg_type::SET_TLM_TYPE);
         request[1] = 1; // Alternative telemetry mode -> a single ESC sends it's full telem (Temp, Volt, Current, ERPM, Consumption, CrcErrCount) in a single frame
@@ -459,6 +470,7 @@ void AP_FETtecOneWire::scan_escs()
         break;
 #endif
 
+    // increment ESC ID and jump to CONFIG_FAST_THROTTLE
     case scan_state_t::CONFIG_NEXT_ACTIVE_ESC:
         do {
             _scan.id++;

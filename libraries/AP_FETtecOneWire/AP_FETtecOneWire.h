@@ -247,18 +247,18 @@ private:
     };
 
     enum scan_state_t : uint8_t {
-        WAIT_FOR_BOOT,
-        IN_BOOTLOADER,
-        START_FW,
-        WAIT_START_FW,
-        ESC_TYPE,
-        SW_VER,
-        SN,
-        NEXT_ID,
-        CONFIG_FAST_THROTTLE,
-        CONFIG_TLM,
-        CONFIG_NEXT_ACTIVE_ESC,
-        DONE
+        WAIT_FOR_BOOT,            ///< initial state, wait for a ESC(s) cold-start
+        IN_BOOTLOADER,            ///< in bootloader?
+        START_FW,                 ///< start the firmware
+        WAIT_START_FW,            ///< wait for the firmware to start
+        ESC_TYPE,                 ///< ask the ESC type
+        SW_VER,                   ///< ask the software version
+        SN,                       ///< ask the serial number
+        NEXT_ID,                  ///< increment ESC ID and jump to IN_BOOTLOADER
+        CONFIG_FAST_THROTTLE,     ///< configure fast-throttle command header
+        CONFIG_TLM,               ///< configure telemetry mode
+        CONFIG_NEXT_ACTIVE_ESC,   ///< increment ESC ID and jump to CONFIG_FAST_THROTTLE
+        DONE                      ///< configuration done
     };
 
     /// presistent scan state data (only used inside scan_escs() function)
