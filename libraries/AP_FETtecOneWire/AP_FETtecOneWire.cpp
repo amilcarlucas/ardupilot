@@ -204,7 +204,7 @@ bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     byte X+1 = 8bit CRC
     */
     uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01};
-    transmit_arr[1] = esc_id+uint8_t(1);
+    transmit_arr[1] = esc_id+uint8_t(1); // one-indexed ESC ID
     if (length > MAX_TRANSMIT_LENGTH) {
         return false; // no, do not send at all
     }
@@ -435,9 +435,10 @@ void AP_FETtecOneWire::scan_escs()
         if (_scan.id == MOTOR_COUNT_MAX) {
             _scan.id = 0;
             if (_found_escs_count) {
-                _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;  // one or more ESCs found, scan is completed, now configure the ESCs found
+                // one or more ESCs found, scan is completed, now configure the ESCs found
                 config_fast_throttle();
                 _scan.id = _fast_throttle.min_id;
+                _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;
             }
         }
         return;
@@ -531,7 +532,7 @@ void AP_FETtecOneWire::config_fast_throttle()
     }
     _fast_throttle.command[0] = uint8_t(msg_type::SET_FAST_COM_LENGTH);
     _fast_throttle.command[1] = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-    _fast_throttle.command[2] = _fast_throttle.min_id+1;   // min ESC id
+    _fast_throttle.command[2] = _fast_throttle.min_id+1;   // one-indexed min ESC id
     _fast_throttle.command[3] = _found_escs_count;         // count of ESCs that will get signals
 }
 
@@ -620,7 +621,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         // B = MSB from first throttle value
         // C = frame header
         static_assert(MOTOR_COUNT_MAX<=15, "OneWire supports at most 15 ESCs, because of the 4 bit limitation bellow");
-        fast_throttle_command[0] = (tlm_request+1) << 4;
+        fast_throttle_command[0] = (tlm_request+1) << 4; // convert from zero indexed to one-indexed. -1 (AP no telemetry) gets correctly converted to 0 (ESC no telemetry)
         fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
         fast_throttle_command[0] |= 0x01;
 
