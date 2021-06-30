@@ -267,8 +267,8 @@ private:
         uint32_t last_us;          ///< last transaction time in microseconds
         uint8_t id;                ///< Zero-indexed ID of the used ESC
         uint8_t state;             ///< scan state-machine state
-        uint8_t rx_retry_cnt;      ///< receive retry counter
-        uint8_t trans_retry_cnt;   ///< transaction retry counter
+        uint8_t rx_try_cnt;        ///< receive try counter
+        uint8_t trans_try_cnt;     ///< transaction (transmit and response) try counter
     } _scan;
 
     /// fast-throttle command configuration

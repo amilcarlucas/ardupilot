@@ -352,8 +352,8 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::IN_BOOTLOADER:
         request[0] = uint8_t(msg_type::OK);
         if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
             if (response[0] == 0x02) {
                 _scan.state++; // is in bootloader, must start firmware
             } else {
@@ -393,8 +393,8 @@ void AP_FETtecOneWire::scan_escs()
         request[0] = uint8_t(msg_type::REQ_TYPE);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].esc_type = response[0];
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
             _scan.state++;
             return;
         }
@@ -406,8 +406,8 @@ void AP_FETtecOneWire::scan_escs()
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
             _scan.state++;
             return;
         }
@@ -420,8 +420,8 @@ void AP_FETtecOneWire::scan_escs()
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serial_number[i] = response[i];
             }
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
             _scan.state++;
             return;
         }
@@ -446,8 +446,8 @@ void AP_FETtecOneWire::scan_escs()
     // configure fast-throttle command header
     case scan_state_t::CONFIG_FAST_THROTTLE:
         if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
 #if HAL_WITH_ESC_TELEM
             _scan.state++;
 #else
@@ -463,8 +463,8 @@ void AP_FETtecOneWire::scan_escs()
         request[0] = uint8_t(msg_type::SET_TLM_TYPE);
         request[1] = 1; // Alternative telemetry mode -> a single ESC sends it's full telem (Temp, Volt, Current, ERPM, Consumption, CrcErrCount) in a single frame
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
-            _scan.rx_retry_cnt = 0;
-            _scan.trans_retry_cnt = 0;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
             _scan.state++;
             return;
         }
@@ -486,20 +486,20 @@ void AP_FETtecOneWire::scan_escs()
     }
 
     // it will try twice to read the response of a request
-    if (_scan.rx_retry_cnt > 1) {
-        _scan.rx_retry_cnt = 0;
+    if (_scan.rx_try_cnt > 1) {
+        _scan.rx_try_cnt = 0;
 
         pull_reset(); // re-transmit the request, in the hope of getting a valid response later
 
-        if (_scan.trans_retry_cnt > 4) {
+        if (_scan.trans_try_cnt > 4) {
             // the request re-transmit failed multiple times, give-up on this ESC, goto the next one
-            _scan.trans_retry_cnt = 0;
+            _scan.trans_try_cnt = 0;
             _scan.state = scan_state_t::NEXT_ID;
         } else {
-            _scan.trans_retry_cnt++;
+            _scan.trans_try_cnt++;
         }
     } else {
-        _scan.rx_retry_cnt++;
+        _scan.rx_try_cnt++;
     }
 }
 
