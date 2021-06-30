@@ -222,7 +222,8 @@ private:
 #endif
     uint16_t _mask;
     uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
-    uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the OneWire bus by the scan_escs() function
+    uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the bus by the scan_escs() function
+    uint8_t _configured_escs;    ///< number of ESCs fully configured by the scan_escs() function, might be smaller than _found_escs_count
 
     int8_t _requested_telemetry_from_esc = -1; ///< the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
     bool _initialised;       ///< device driver and ESCs are fully initialized

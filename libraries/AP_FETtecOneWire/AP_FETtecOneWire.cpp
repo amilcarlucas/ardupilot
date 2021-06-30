@@ -155,6 +155,8 @@ void AP_FETtecOneWire::configuration_check()
 #endif
 
     const bool all_escs_found = _found_escs_count >= _nr_escs_in_bitmask;
+    const bool all_escs_configured = _found_escs_count == _configured_escs;
+    const bool all_escs_contiguous = _fast_throttle.max_id - _fast_throttle.min_id < _found_escs_count;
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
@@ -163,22 +165,28 @@ void AP_FETtecOneWire::configuration_check()
 #endif
 
     if (__builtin_popcount(_motor_mask.get()) != _nr_escs_in_bitmask) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in SERVO_FTW_MASK paramter bits");
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in SERVO_FTW_MASK parameter bits");
     }
 
-    if (_fast_throttle.max_id - _fast_throttle.min_id > _found_escs_count - 1){
+    if (!all_escs_contiguous){
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in IDs found");
     }
 
-    if (!all_escs_found || telem_rx_missing) {
-        if (!all_escs_found) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
-        }
+    if (!all_escs_found) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
+    }
+
+    if (!all_escs_configured) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: configured only %i of %i ESCs", _configured_escs, _found_escs_count);
+    }
+
 #if HAL_WITH_ESC_TELEM
-        if (telem_rx_missing) {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
-        }
+    if (telem_rx_missing) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+    }
 #endif
+
+    if (!all_escs_contiguous || !all_escs_found || !all_escs_configured || telem_rx_missing) {
         // re-init the entire device driver
         _scan.state = scan_state_t::WAIT_FOR_BOOT;
         _initialised = false;
@@ -438,6 +446,7 @@ void AP_FETtecOneWire::scan_escs()
                 // one or more ESCs found, scan is completed, now configure the ESCs found
                 config_fast_throttle();
                 _scan.id = _fast_throttle.min_id;
+                _configured_escs = 0;
                 _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;
             }
         }
@@ -452,6 +461,7 @@ void AP_FETtecOneWire::scan_escs()
 #if HAL_WITH_ESC_TELEM
             _scan.state++;
 #else
+            _configured_escs++;
             _scan.state = CONFIG_NEXT_ACTIVE_ESC;
 #endif
             return;
@@ -466,6 +476,7 @@ void AP_FETtecOneWire::scan_escs()
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
+            _configured_escs++;
             _scan.state++;
             return;
         }
@@ -495,7 +506,7 @@ void AP_FETtecOneWire::scan_escs()
         if (_scan.trans_try_cnt > 4) {
             // the request re-transmit failed multiple times, give-up on this ESC, goto the next one
             _scan.trans_try_cnt = 0;
-            _scan.state = scan_state_t::NEXT_ID;
+            _scan.state = _scan.state < scan_state_t::NEXT_ID ? scan_state_t::NEXT_ID : scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
         } else {
             _scan.trans_try_cnt++;
         }
