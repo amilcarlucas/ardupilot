@@ -168,7 +168,7 @@ private:
     /**
         increment message packet count for every ESC
     */
-    void inc_send_msg_count();
+    void inc_sent_msg_count();
 
     /**
         calculates tx (outgoing packets) error-rate by converting the CRC error counts reported by the ESCs into percentage
@@ -202,8 +202,8 @@ private:
     {
         public:
 #if HAL_WITH_ESC_TELEM
-        uint16_t error_count;                ///< error counter from the ESCs. Zero-indexed array
-        uint16_t error_count_since_overflow; ///< error counter from the ESCs to pass the overflow. Zero-indexed array
+        uint16_t error_count;                ///< error counter from the ESCs.
+        uint16_t error_count_since_overflow; ///< error counter from the ESCs to pass the overflow.
 #endif
         bool active;
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
@@ -214,11 +214,10 @@ private:
 #endif
     } _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
 
-    //FETtecOneWireESC_t _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
     uint32_t _last_config_check_ms;
 #if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
-    uint16_t _send_msg_count; ///< number of fast-throttle commands send by the flight controller
+    uint16_t _sent_msg_count;     ///< number of fast-throttle commands sent by the flight controller
     uint16_t _update_rate_hz;
 #endif
     uint16_t _mask;

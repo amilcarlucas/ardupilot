@@ -159,7 +159,7 @@ void AP_FETtecOneWire::configuration_check()
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
     const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
-    telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_send_msg_count > 2 * MOTOR_COUNT_MAX);
+    telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
     if (__builtin_popcount(_motor_mask.get()) != _nr_escs_in_bitmask) {
@@ -540,11 +540,11 @@ void AP_FETtecOneWire::config_fast_throttle()
 /**
     increment message packet count for every ESC
 */
-void AP_FETtecOneWire::inc_send_msg_count()
+void AP_FETtecOneWire::inc_sent_msg_count()
 {
-    _send_msg_count++;
-    if (_send_msg_count > 4 * _update_rate_hz) { // resets every four seconds
-        _send_msg_count = 0; //reset the counter
+    _sent_msg_count++;
+    if (_sent_msg_count > 4 * _update_rate_hz) { // resets every four seconds
+        _sent_msg_count = 0;
         for (int i=0; i<_found_escs_count; i++) {
             _found_escs[i].error_count_since_overflow = _found_escs[i].error_count; //save the current ESC error state
         }
@@ -721,7 +721,7 @@ void AP_FETtecOneWire::update()
 #if HAL_WITH_ESC_TELEM
         // now that escs_set_values() has been executed we can fully process the telemetry data from the ESC
 
-        inc_send_msg_count(); // increment message packet count for every ESC
+        inc_sent_msg_count(); // increment message packet count for every ESC
 
         if (_requested_telemetry_from_esc != -1 && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
             if (_pole_count < 2) { // if user set parameter is invalid use 14 Poles
