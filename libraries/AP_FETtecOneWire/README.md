@@ -1,7 +1,7 @@
 # FETtec OneWire
 
 FETtec OneWire is an [ESC](https://en.wikipedia.org/wiki/Electronic_speed_control) communication protocol created by Felix Niessen (former Flyduino KISS developer) from [FETtec](https://fettec.net).
-It is a (bidirectional) [digital half-duplex asynchronous serial communication protocol](https://en.wikipedia.org/wiki/Asynchronous_serial_communication) running at 2Mbit/s Baudrate. It requires a single wire connection (hence the name OneWire) regardless of the number of ESCs connected.
+It is a (bidirectional) [digital full-duplex asynchronous serial communication protocol](https://en.wikipedia.org/wiki/Asynchronous_serial_communication) running at 500Kbit/s Baudrate. It requires three wire (RX, TX and GND) connection (albeit the name OneWire) regardless of the number of ESCs connected.
 Unlike bidirectional-Dshot, the FETtec OneWire protocol does not need one DMA channel per ESC for bidirectional communication. 
 
 For purchase, connection and configuration information please see the [Ardupilot FETtec OneWire wiki page](https://ardupilot.org/copter/docs/common-fettec-onewire.html).
@@ -12,7 +12,7 @@ For purchase, connection and configuration information please see the [Ardupilot
 
 ## Ardupilot to ESC protocol
 
-The FETtec OneWire protocol supports up to 22 ESCs. As most copters only use at most 12 motors, Ardupilot's implementation suports only 12 to save memory.
+The FETtec OneWire protocol supports up to 24 ESCs. As most copters only use at most 12 motors, Ardupilot's implementation supports only 12 to save memory.
 
 There are two types of messages sent to the ESCs:
 
@@ -34,7 +34,7 @@ There are two types of messages sent to the ESCs:
     Byte 0 is the frame header
     Byte 1 is the telemetry request and part of fast throttle signal
     Byte N is CRC (last Byte after the Payload). It uses the same CRC algorithm as Dshot.
-```	
+```
     The first two bytes are frame header and telemetry request as well as the first parts of the throttle signal.
     The following bytes are transmitting the throttle signals for the ESCs (11bit per ESC) followed by the CRC.
     The signal is used to transfer the eleven bit throttle signals with as few bytes as possible:
@@ -47,27 +47,16 @@ There are two types of messages sent to the ESCs:
 
     If telemetry is requested the ESCs will answer them in the ESC-ID order.
     See *ESC to Ardupilot Protocol* section below and comments in `FETtecOneWire.cpp` for details.
-	
+
 
 ### Timing
 
-Four ESCs need 90uS for the throttle request and telemetry reception. With four ESCs 11kHz are possible. As each additional ESC adds 11bits	and 16 telemetry bits, so the rate is lowered by each ESC. If you use 8 ESCs, it needs 160uS including telemetry response, so 5.8kHz are possible. 
-	
+Four ESCs need 90uS for the throttle request and telemetry reception. With four ESCs 11kHz are possible.
+As each additional ESC adds 11 extra fast-throttle command bits, so the rate is lowered by each ESC.
+If you use 8 ESCs, it needs 160uS including telemetry response, so 5.8kHz are possible.
+
 **Note:** You need at least a 4Hz motor signal (max 250ms between messages) before the motors disarm.
 
-### Connection and Halfduplex with STM
-
-To have reliable 2Mbit/s Baudrate the GPIO should be set to PushPull.
-On STM it is a special mode that is initialized like this:
-
-```
-    gpioInit.mode = LL_GPIO_MODE_ALTERNATE;
-    gpioInit.Pull = LL_GPIO_MODE_ALTERNATE;
-    gpio.Pull = LL_GPIO_PULL_UP;
-    gpioInit.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-    gpioInit.Alternate = LL_GPIO_AF_1;
-```	
-	
 ## ESC to Ardupilot protocol
 
 OneWire ESC telemetry information is sent back to the autopilot:
@@ -77,19 +66,20 @@ OneWire ESC telemetry information is sent back to the autopilot:
 - Current draw (A/10)
 - Power consumption (mAh)
 - Temperature (°C/10)
+- CRC errors (ArduPilot->ESC) counter
 
 This information is used by Ardupilot to:
 
 - log the status of each ESC to the SDCard or internal Flash, for post flight analysis
 - send the status of each ESC to the ground station or companion computer for real-time monitoring
-- Optionaly dynamically change the center frequency of the notch filters used to reduce frame vibration noise in the gyros
-- Optionaly measure battery voltage and power consumption
+- Optionally dynamically change the center frequency of the notch filters used to reduce frame vibration noise in the gyros
+- Optionally measure battery voltage and power consumption
 
 
 ## Full/Alternative Telemetry
-The telemetry can be switched to "per ESC" Mode, where one ESC answers with it's full telemetry as oneWire package including CRC and additionally the CRC Erros counted by the ESC..
-To use this mode OW_SET_TLM_TYPE must be send to each ESC. It make sense to set it while initializing.
-If this was successful set the ESC response with "OW OK".
+The telemetry can be switched to "per ESC" Mode, where one ESC answers with it's full telemetry as oneWire package including CRC and additionally the CRC Errors counted by the ESC.
+To use this mode, `msg_type::SET_TLM_TYPE` is send to each ESC while initializing.
+If this was successful set the ESC response with `msg_type::OK`.
 
 The answer is packed inside a OW package, that can be received with the FETtecOneWire::receive function, that also checks the CRC.
 
