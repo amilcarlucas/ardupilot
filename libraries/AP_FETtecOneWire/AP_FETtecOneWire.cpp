@@ -404,7 +404,7 @@ void AP_FETtecOneWire::scan_escs()
         request[0] = uint8_t(msg_type::REQ_SN);
         if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
-                _found_escs[_scan.id].serialNumber[i] = response[i];
+                _found_escs[_scan.id].serial_number[i] = response[i];
             }
             _scan.rx_retry_cnt = 0;
             _scan.trans_retry_cnt = 0;
@@ -724,18 +724,17 @@ void AP_FETtecOneWire::update()
 #if HAL_AP_FETTEC_ESC_BEEP
 /**
     makes all connected ESCs beep
-    @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
+    @param beep_frequency a 8 bit value from 0-255. higher make a higher beep
 */
-void AP_FETtecOneWire::Beep(const uint8_t beepFrequency)
+void AP_FETtecOneWire::beep(const uint8_t beep_frequency)
 {
     if (_found_escs_count > 0) {
-        const uint8_t request[2] = {uint8_t(msg_type::BEEP), beepFrequency};
-        const uint8_t request_len[1] = {2};
+        const uint8_t request[2] = {uint8_t(msg_type::BEEP), beep_frequency};
         const uint8_t spacer[2] = {0, 0};
         for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
-            transmit(i, request, request_len);
+            transmit(i, request, sizeof(request));
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, 2);
+            _uart->write(spacer, sizeof(spacer));
         }
     }
 }
@@ -744,20 +743,19 @@ void AP_FETtecOneWire::Beep(const uint8_t beepFrequency)
 #if HAL_AP_FETTEC_ESC_LIGHT
 /**
     sets the racewire color for all ESCs
-    @param R red brightness
-    @param G green brightness
-    @param B blue brightness
+    @param r red brightness
+    @param g green brightness
+    @param b blue brightness
 */
-void AP_FETtecOneWire::RW_LEDcolor(const uint8_t R, const uint8_t G, const uint8_t B)
+void AP_FETtecOneWire::led_color(const uint8_t r, const uint8_t g, const uint8_t b)
 {
     if (_found_escs_count > 0) {
-        const uint8_t request[4] = {uint8_t(msg_type::SET_LED_TMP_COLOR), R, G, B};
-        const uint8_t request_len[1] = {4};
+        const uint8_t request[4] = {uint8_t(msg_type::SET_LED_TMP_COLOR), r, g, b};
         const uint8_t spacer[2] = {0, 0};
         for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
-            transmit(i, request, request_len);
+            transmit(i, request, sizeof(request));
             // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, 2);
+            _uart->write(spacer, sizeof(spacer));
         }
     }
 }

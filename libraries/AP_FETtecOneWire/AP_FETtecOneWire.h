@@ -24,14 +24,17 @@
 #define HAL_AP_FETTEC_ONEWIRE_ENABLED !HAL_MINIMIZE_FEATURES && !defined(HAL_BUILD_AP_PERIPH) && BOARD_FLASH_SIZE > 1024
 #endif
 
+// Get static info from the ESCs (optional feature)
 #ifndef HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
 #define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 0
 #endif
 
+// provide beep support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_BEEP
 #define HAL_AP_FETTEC_ESC_BEEP 0
 #endif
 
+// provide light support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_LIGHT
 #define HAL_AP_FETTEC_ESC_LIGHT 0
 #endif
@@ -64,17 +67,19 @@ public:
 #if HAL_AP_FETTEC_ESC_BEEP
     /**
     makes all connected ESCs beep
-    @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
+    @param beep_frequency a 8 bit value from 0-255. higher make a higher beep
     */
-    void Beep(const uint8_t beepFrequency);
+    void beep(const uint8_t beep_frequency);
 #endif
 
 #if HAL_AP_FETTEC_ESC_LIGHT
     /**
     sets the racewire color for all ESCs
-    R, G, B = 8bit colors
+    @param r red brightness
+    @param g green brightness
+    @param b blue brightness
     */
-    void RW_LEDcolor(const uint8_t R, const uint8_t G, const uint8_t B);
+    void led_color(const uint8_t r, const uint8_t g, const uint8_t b);
 #endif
 
 private:
