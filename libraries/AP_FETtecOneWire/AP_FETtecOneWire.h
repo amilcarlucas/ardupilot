@@ -28,6 +28,14 @@
 #define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 0
 #endif
 
+#ifndef HAL_AP_FETTEC_ESC_BEEP
+#define HAL_AP_FETTEC_ESC_BEEP 0
+#endif
+
+#ifndef HAL_AP_FETTEC_ESC_LIGHT
+#define HAL_AP_FETTEC_ESC_LIGHT 0
+#endif
+
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
 
 #include <AP_ESC_Telem/AP_ESC_Telem.h>
@@ -52,6 +60,23 @@ public:
     static AP_FETtecOneWire *get_singleton() {
         return _singleton;
     }
+
+#if HAL_AP_FETTEC_ESC_BEEP
+    /**
+    makes all connected ESCs beep
+    @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
+    */
+    void Beep(const uint8_t beepFrequency);
+#endif
+
+#if HAL_AP_FETTEC_ESC_LIGHT
+    /**
+    sets the racewire color for all ESCs
+    R, G, B = 8bit colors
+    */
+    void RW_LEDcolor(const uint8_t R, const uint8_t G, const uint8_t B);
+#endif
+
 private:
     static AP_FETtecOneWire *_singleton;
     AP_HAL::UARTDriver *_uart;

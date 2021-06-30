@@ -720,4 +720,47 @@ void AP_FETtecOneWire::update()
     // Now that all real-time tasks above have been done, do some periodic checks.
     configuration_check();
 }
+
+#if HAL_AP_FETTEC_ESC_BEEP
+/**
+    makes all connected ESCs beep
+    @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
+*/
+void AP_FETtecOneWire::Beep(const uint8_t beepFrequency)
+{
+    if (_found_escs_count > 0) {
+        const uint8_t request[2] = {uint8_t(msg_type::BEEP), beepFrequency};
+        const uint8_t request_len[1] = {2};
+        const uint8_t spacer[2] = {0, 0};
+        for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
+            transmit(i, request, request_len);
+            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
+            _uart->write(spacer, 2);
+        }
+    }
+}
+#endif
+
+#if HAL_AP_FETTEC_ESC_LIGHT
+/**
+    sets the racewire color for all ESCs
+    @param R red brightness
+    @param G green brightness
+    @param B blue brightness
+*/
+void AP_FETtecOneWire::RW_LEDcolor(const uint8_t R, const uint8_t G, const uint8_t B)
+{
+    if (_found_escs_count > 0) {
+        const uint8_t request[4] = {uint8_t(msg_type::SET_LED_TMP_COLOR), R, G, B};
+        const uint8_t request_len[1] = {4};
+        const uint8_t spacer[2] = {0, 0};
+        for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
+            transmit(i, request, request_len);
+            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
+            _uart->write(spacer, 2);
+        }
+    }
+}
+#endif
+
 #endif  // HAL_AP_FETTEC_ONEWIRE_ENABLED

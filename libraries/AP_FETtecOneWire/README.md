@@ -106,63 +106,34 @@ As the packages are send in an uInt8_t array the values must be restored like as
 
 ## Extra features
 
-The ESC can beep and have lights. To control this you must add this code snippet to the header file:
+The ESC can beep and have lights. To control this you must activate the code in the header file:
 
 ```C++
-public:
+#ifndef HAL_AP_FETTEC_ESC_BEEP
+#define HAL_AP_FETTEC_ESC_BEEP 1
+#endif
+
+#ifndef HAL_AP_FETTEC_ESC_LIGHT
+#define HAL_AP_FETTEC_ESC_LIGHT 1
+#endif
+```
+
+or just set the `HAL_AP_FETTEC_ESC_BEEP` and/or `HAL_AP_FETTEC_ESC_LIGHT` macros outside of the code.
+
+After that you will be able to call the public functions:
+
+```C++
 /**
     makes all connected ESCs beep
     @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
 */
-    void Beep(uint8_t beepFrequency);
+    void Beep(const uint8_t beepFrequency);
 
 /**
     sets the racewire color for all ESCs
     R, G, B = 8bit colors
 */
-    void RW_LEDcolor(uint8_t R, uint8_t G, uint8_t B);
+    void RW_LEDcolor(const uint8_t R, const uint8_t G, const uint8_t B);
 ```
 
-And this code snippet to the .cpp file:
-
-```C++
-/**
-    makes all connected ESCs beep
-    @param beepFrequency a 8 bit value from 0-255. higher make a higher beep
-*/
-void AP_FETtecOneWire::Beep(uint8_t beepFrequency)
-{
-    if (_id_count > 0) {
-        const uint8_t request[2] = {OW_BEEP, beepFrequency};
-        const uint8_t request_len[1] = {2};
-        const uint8_t spacer[2] = {0, 0};
-        for (uint8_t i = _min_id; i < _max_id + 1; i++) {
-            Transmit(i, request, request_len);
-            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, 2);
-        }
-    }
-}
-
-/**
-    sets the racewire color for all ESCs
-    @param R red brightness
-    @param G green brightness
-    @param B blue brightness
-*/
-void AP_FETtecOneWire::RW_LEDcolor(uint8_t R, uint8_t G, uint8_t B)
-{
-    if (_id_count > 0) {
-        const uint8_t request[4] = {OW_SET_LED_TMP_COLOR, R, G, B};
-        const uint8_t request_len[1] = {4};
-        const uint8_t spacer[2] = {0, 0};
-        for (uint8_t i = _min_id; i < _max_id + 1; i++) {
-            Transmit(i, request, request_len);
-            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, 2);
-        }
-    }
-}
-```
-
-After that you must add custom code to call these functions according to your requirements.
+You need to call these functions on your own code according to your requirements.
