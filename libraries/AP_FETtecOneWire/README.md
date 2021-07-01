@@ -6,9 +6,26 @@ Unlike bidirectional-Dshot, the FETtec OneWire protocol does not need one DMA ch
 
 For purchase, connection and configuration information please see the [Ardupilot FETtec OneWire wiki page](https://ardupilot.org/copter/docs/common-fettec-onewire.html).
 
+## Features of this device driver
 
-
-
+- use ArduPilot's coding guidelines and naming conventions
+- control motor speed
+- copy ESC telemetry data into MAVLink telemetry
+- save ESC telemetry data in dataflash logs
+- use RPM telemetry for dynamic notch filter frequencies
+- sum the current telemetry info from all ESCs and use it as virtual battery current monitor sensor
+- average the voltage telemetry info and use it as virtual battery voltage monitor sensor
+- average the temperature telemetry info and use it as virtual battery temperature monitor sensor
+- report telemetry communication error rate in the dataflash logs
+- warn the user if there is a gap in the bitmask parameter.
+- re-enumerate all ESCs if not armed (motors not spinning) when
+  - there is a gap in their address space IDs
+  - communication with one of the ESCs is lost
+  - some of the configured ESCs are not found
+  - some of the configured ESCs are not correctly configured
+- allows the user to configure motor rotation direction per ESC (only gets updated if not armed)
+- adds a serial simulator of FETtec OneWire ESCs
+- adds autotest (using the simulator) to fly a copter over a simulated serial link connection
 
 ## Ardupilot to ESC protocol
 
@@ -16,7 +33,8 @@ The FETtec OneWire protocol supports up to 24 ESCs. As most copters only use at 
 
 There are two types of messages sent to the ESCs:
 
-1. Configuration message consists of six frame bytes + payload bytes.
+### Configuration message
+Consists of six frame bytes + payload bytes.
 
 ```
     Byte 0 is the transfer direction (e.g. 0x01 Master to Slave)
@@ -28,7 +46,7 @@ There are two types of messages sent to the ESCs:
     Byte 6-255 is CRC (last Byte after the Payload). It uses the same CRC algorithm as Dshot.
 ```	
 
-2. Fast Throttle Signal
+### Fast Throttle Signal
 
 ```
     Byte 0 is the frame header
@@ -100,21 +118,48 @@ As the packages are send in an uInt8_t array the values must be restored like as
 
 ## Extra features
 
-The ESC can beep and have lights. To control this you must activate the code in the header file:
-
+### Read type, firmware version and serial number
+To control this you must activate the code in the header file:
 ```C++
+// Get static info from the ESCs (optional feature)
+#ifndef HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+#define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 1
+#endif
+```
+Or just set the `HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO` macro in the compiler toolchain.
+After that you will be able to access this information in the `_found_escs[]` datastructure.
+
+### Beep
+To control this you must activate the code in the header file:
+```C++
+// provide beep support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_BEEP
 #define HAL_AP_FETTEC_ESC_BEEP 1
 #endif
+```
 
+Or just set the `HAL_AP_FETTEC_ESC_BEEP` macro in the compiler toolchain.
+After that you will be able to call the public function:
+
+```C++
+/**
+    makes all connected ESCs beep
+    @param beep_frequency a 8 bit value from 0-255. higher make a higher beep
+*/
+    void beep(const uint8_t beep_frequency);
+```
+
+### Multicolor RGB Led light
+To control this you must activate the code in the header file:
+```C++
+// provide light support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_LIGHT
 #define HAL_AP_FETTEC_ESC_LIGHT 1
 #endif
 ```
 
-or just set the `HAL_AP_FETTEC_ESC_BEEP` and/or `HAL_AP_FETTEC_ESC_LIGHT` macros outside of the code.
-
-After that you will be able to call the public functions:
+Or just set the `HAL_AP_FETTEC_ESC_LIGHT` macro in the compiler toolchain.
+After that you will be able to call the public function:
 
 ```C++
 /**
