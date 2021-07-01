@@ -771,6 +771,14 @@ void AP_FETtecOneWire::update()
         return; // the rest of this function can only run after fully initted
     }
 
+    const uint32_t now = AP_HAL::micros();
+    if (now - _scan.last_us < 700U) {
+        // the update() call period must be bigger than 700 us,
+        // as to have time to receive the telemetry data
+        return;
+    }
+    _scan.last_us = now;
+
     // get ESC set points, stop as soon as there is a gap
     uint16_t motor_pwm[MOTOR_COUNT_MAX] {};
     for (uint8_t i = 0; i < _nr_escs_in_bitmask; i++) {
