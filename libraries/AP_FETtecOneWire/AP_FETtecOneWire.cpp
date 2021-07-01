@@ -27,10 +27,6 @@
 
 extern const AP_HAL::HAL& hal;
 
-static constexpr uint8_t FRAME_OVERHEAD = 6;
-static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
-static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
-
 const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
 
     // @Param: MASK
@@ -264,6 +260,27 @@ bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     return true;
 }
 
+void AP_FETtecOneWire::move_preamble_in_receive_buffer(uint8_t search_start_pos)
+{
+    uint8_t i;
+    for (i=search_start_pos; i<receive_buf_used; i++) {
+        if ((uint8_t)receive_buf[i] == 0x02 ||
+            (uint8_t)receive_buf[i] == 0x03) {
+            break;
+        }
+    }
+    consume_bytes(i);
+}
+
+void AP_FETtecOneWire::consume_bytes(uint8_t n)
+{
+    if (n == 0) {
+        return;
+    }
+    memmove(receive_buf, &receive_buf[n], receive_buf_used-n);
+    receive_buf_used = receive_buf_used - n;
+}
+
 /**
     reads the FETtec OneWire answer frame of an ESC
     @param bytes 8 bit byte array, where the received answer gets stored in
@@ -297,53 +314,42 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     }
 #endif
 
-    // look for the real answer
-    const uint8_t raw_length = FRAME_OVERHEAD + length;
-    if (_uart->available() >= uint32_t(raw_length)) {
-        // sync to frame start byte
-        uint8_t test_frame_start;
-        uint8_t head = 0; // nr of attempts at finding the frame start byte
-        do {
-            test_frame_start = _uart->read();
-            if (test_frame_start == 0x02 || test_frame_start == 0x03) {
-                break; // frame start byte detected, continue decoding the rest of the response
-            }
-            if (++head > 5) {
-                // too many attempts at finding the frame start byte failed
-                _uart->discard_input();
-                return receive_response::NO_ANSWER_YET;
-            }
-        }
-        while (_uart->available());
-        // copy message
-        if (_uart->available() >= uint32_t(raw_length-1u)) {
-            uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
-            receive_buf[0] = test_frame_start;
-            for (uint8_t i = 1; i < raw_length; i++) {
-                receive_buf[i] = _uart->read();
-            }
-            // check CRC
-            if (crc8_dvb_update(0, receive_buf, raw_length-1u) == receive_buf[raw_length-1u]) {
-                if (return_full_frame == return_type::RESPONSE) {
-                    for (uint8_t i = 0; i < length; i++) {
-                        bytes[i] = receive_buf[5u + i];
-                    }
-                } else {
-                    for (uint8_t i = 0; i < raw_length; i++) {
-                        bytes[i] = receive_buf[i];
-                    }
-                }
-                return receive_response::ANSWER_VALID;
-            } else {
-                _uart->discard_input();
-                return receive_response::CRC_MISSMATCH;
-            }
-        } else {
-            return receive_response::NO_ANSWER_YET;
-        }
-    } else {
+    // read as much from the uart as we can:
+    const uint8_t bytes_to_read = ARRAY_SIZE(receive_buf) - receive_buf_used;
+    uint32_t nbytes = _uart->read(&receive_buf[receive_buf_used], bytes_to_read);
+    if (nbytes == 0) {
         return receive_response::NO_ANSWER_YET;
     }
+    receive_buf_used += nbytes;
+
+    move_preamble_in_receive_buffer();
+
+    // we know what length of message should be present
+    const uint8_t raw_length = FRAME_OVERHEAD + length;
+    if (receive_buf_used < raw_length) {
+        return receive_response::NO_ANSWER_YET;
+    }
+
+    if (crc8_dvb_update(0, receive_buf, raw_length-1) != receive_buf[raw_length-1]) {
+        // bad message; shift away this preamble byte to try to find
+        // another message
+        move_preamble_in_receive_buffer(1);
+        return receive_response::CRC_MISSMATCH;
+    }
+
+    // message is good
+    switch (return_full_frame) {
+    case return_type::RESPONSE:
+        memcpy(bytes, &receive_buf[5], length);
+        break;
+    case return_type::FULL_FRAME:
+        memcpy(bytes, receive_buf, raw_length);
+        break;
+    }
+
+    consume_bytes(raw_length);
+
+    return receive_response::ANSWER_VALID;
 }
 
 /**

@@ -102,6 +102,10 @@ private:
     AP_Int8 _pole_count_parameter;
 #endif
 
+    static constexpr uint8_t FRAME_OVERHEAD = 6;
+    static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
+    static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
+
     /**
         initialize the serial port, scan the OneWire bus, setup the found ESCs
     */
@@ -143,6 +147,10 @@ private:
         @return receive_response enum
     */
     receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
+    uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
+    uint8_t receive_buf_used;
+    void move_preamble_in_receive_buffer(uint8_t search_start_pos = 0);
+    void consume_bytes(uint8_t n);
 
     enum class pull_state : uint8_t {
         BUSY,
