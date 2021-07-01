@@ -40,9 +40,9 @@ The following bytes are transmitting the throttle signals for the ESCs (11bit pe
 The signal is used to transfer the eleven bit throttle signals with as few bytes as possible:
 
 ```
-    [0    ..  980] - negative throttle, rotation in one direction (depends on the motor wiring connection). 0 minimum throttle, 980 maximum throttle
-    [981  .. 1019] - no rotation, dead-band
-    [1020 .. 2000] - positive throttle, rotation in the other direction. 1020 minimum throttle, 2000 maximum throttle
+    [990  ..    0] - negative throttle, rotation in one direction (depends on the motor wiring connection). 980 minimum throttle, 00 maximum throttle
+    [991  .. 1009] - no rotation, dead-band
+    [1010 .. 2000] - positive throttle, rotation in the other direction. 1020 minimum throttle, 2000 maximum throttle
 ```
 All motors wait for the complete message with all throttle signals before changing their output.
 
