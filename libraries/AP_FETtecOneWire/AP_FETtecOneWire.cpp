@@ -30,7 +30,6 @@ extern const AP_HAL::HAL& hal;
 static constexpr uint8_t FRAME_OVERHEAD = 6;
 static constexpr uint8_t MAX_TRANSMIT_LENGTH = 4;
 static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
-static constexpr uint8_t MAX_RESPONSE_LENGTH = FRAME_OVERHEAD + MAX_RECEIVE_LENGTH;
 
 const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
 
@@ -75,9 +74,11 @@ AP_FETtecOneWire::AP_FETtecOneWire()
 
     _response_length[uint8_t(msg_type::OK)] = 1;
     _response_length[uint8_t(msg_type::BL_START_FW)] = 0;        // Bootloader only
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     _response_length[uint8_t(msg_type::REQ_TYPE)] = 1;
     _response_length[uint8_t(msg_type::REQ_SN)] = 12;
     _response_length[uint8_t(msg_type::REQ_SW_VER)] = 2;
+#endif
     _response_length[uint8_t(msg_type::SET_FAST_COM_LENGTH)] = 1;
     _response_length[uint8_t(msg_type::SET_TLM_TYPE)] = 1;
 }
@@ -354,7 +355,7 @@ AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const uint8_t esc_id
 */
 void AP_FETtecOneWire::scan_escs()
 {
-    uint8_t response[MAX_RESPONSE_LENGTH];
+    uint8_t response[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
     uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
@@ -612,9 +613,12 @@ float AP_FETtecOneWire::calc_tx_crc_error_perc(const uint8_t esc_id, uint16_t cu
 AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry(TelemetryData& t, int16_t& centi_erpm, uint16_t& tx_err_count, uint8_t &tlm_from_id)
 {
     receive_response ret = receive_response::NO_ANSWER_YET;
+    static constexpr uint8_t TELEM_LENGTH = 11;
+    static_assert(MAX_RECEIVE_LENGTH >= TELEM_LENGTH, "MAX_RECEIVE_LENGTH is too small");
+
     if (_found_escs_count > 0) {
-        uint8_t telem[FRAME_OVERHEAD + 11];
-        ret = receive((uint8_t *) telem, 11, return_type::FULL_FRAME);
+        uint8_t telem[FRAME_OVERHEAD + TELEM_LENGTH];
+        ret = receive((uint8_t *) telem, TELEM_LENGTH, return_type::FULL_FRAME);
 
         if (ret == receive_response::ANSWER_VALID) {
             if (telem[1] <= _fast_throttle.min_id || telem[1] > _fast_throttle.max_id+1) {
