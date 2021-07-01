@@ -91,9 +91,11 @@ private:
 #else
     static constexpr uint8_t MOTOR_COUNT_MAX = 12;                 ///< OneWire supports up-to 15 ESCs, but Ardupilot only supports 12
 #endif
-    AP_Int32 _motor_mask;
-    AP_Int8 _pole_count;
+    AP_Int32 _motor_mask_parameter;
     AP_Int32 _reverse_mask_parameter;
+#if HAL_WITH_ESC_TELEM
+    AP_Int8 _pole_count_parameter;
+#endif
 
     enum class return_type : uint8_t
     {
@@ -221,7 +223,7 @@ private:
     uint16_t _sent_msg_count;     ///< number of fast-throttle commands sent by the flight controller
     uint16_t _update_rate_hz;
 #endif
-    uint16_t _mask;
+    uint16_t _motor_mask;
     uint16_t _reverse_mask;
     uint8_t _nr_escs_in_bitmask; ///< number of ESCs set on the FTW_MASK parameter
     uint8_t _found_escs_count;   ///< number of ESCs auto-scanned in the bus by the scan_escs() function
