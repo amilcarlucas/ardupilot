@@ -35,12 +35,19 @@ static constexpr uint8_t MAX_RESPONSE_LENGTH = FRAME_OVERHEAD + MAX_RECEIVE_LENG
 const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
 
     // @Param: MASK
-    // @DisplayName: Servo Channel Output Bitmask
+    // @DisplayName: Servo channel output bitmask
     // @Description: Servo channel mask specifying FETtec ESC output.  Set bits must be contiguous.  The SERVOn number is used as the FETtec ESC Id
     // @Bitmask: 0:SERVO1,1:SERVO2,2:SERVO3,3:SERVO4,4:SERVO5,5:SERVO6,6:SERVO7,7:SERVO8,8:SERVO9,9:SERVO10,10:SERVO11,11:SERVO12,12:SERVO13,13:SERVO14,14:SERVO15,15:SERVO16
     // @RebootRequired: True
     // @User: Standard
     AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask, 0),
+
+    // @Param: RVMASK
+    // @DisplayName: Servo channel reverse rotation bitmask
+    // @Description: Servo channel mask to reverse rotation of FETtec ESC outputs.  Set bits must be contiguous.
+    // @Bitmask: 0:SERVO1,1:SERVO2,2:SERVO3,3:SERVO4,4:SERVO5,5:SERVO6,6:SERVO7,7:SERVO8,8:SERVO9,9:SERVO10,10:SERVO11,11:SERVO12,12:SERVO13,13:SERVO14,14:SERVO15,15:SERVO16
+    // @User: Standard
+    AP_GROUPINFO("RVMASK",  2, AP_FETtecOneWire, _reverse_mask_parameter, 0),
 
     // @Param: POLES
     // @DisplayName: Nr. electrical poles
@@ -48,7 +55,7 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
     // @Range: 2 50
     // @RebootRequired: False
     // @User: Standard
-    AP_GROUPINFO("POLES", 2, AP_FETtecOneWire, _pole_count, 14),
+    AP_GROUPINFO("POLES", 3, AP_FETtecOneWire, _pole_count, 14),
 
     AP_GROUPEND
 };
@@ -109,6 +116,7 @@ void AP_FETtecOneWire::init()
     uint16_t mmask = 0;     // will be a copy of _mask with only the contiguous LSBs set
 
     static_assert(MOTOR_COUNT_MAX <= sizeof(_mask)*8, "_mask is too narrow for MOTOR_COUNT_MAX ESCs");
+    static_assert(MOTOR_COUNT_MAX <= sizeof(_reverse_mask)*8, "_reverse_mask is too narrow for MOTOR_COUNT_MAX ESCs");
     static_assert(MOTOR_COUNT_MAX <= sizeof(smask)*8, "smask is too narrow for MOTOR_COUNT_MAX ESCs");
     static_assert(MOTOR_COUNT_MAX <= sizeof(mmask)*8, "mmask is too narrow for MOTOR_COUNT_MAX ESCs");
 
@@ -140,6 +148,9 @@ void AP_FETtecOneWire::configuration_check()
     if (hal.util->get_soft_armed()) {
         return; // checks are only done when vehicle is disarmed, because the GCS_SEND_TEXT() function calls use lots of resources
     }
+
+    // for safety, only update the reversed motors bitmask when motors are disarmed
+    _reverse_mask= _reverse_mask_parameter;
 
     const uint32_t now = AP_HAL::millis();
     if ((now - _last_config_check_ms < 3000) && _last_config_check_ms != 0) {  // only runs once every 3 seconds
@@ -704,6 +715,9 @@ void AP_FETtecOneWire::update()
             break;
         }
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
+        if (_reverse_mask & (1U << i)) {
+            motor_pwm[i] = 2000-motor_pwm[i];
+        }
     }
 
 #if HAL_WITH_ESC_TELEM
