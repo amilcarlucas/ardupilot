@@ -46,13 +46,13 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
     // @User: Standard
     AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask, 0),
 
-    // @Param: REVMASK
+    // @Param: REVMSK
     // @DisplayName: Servo channel reverse rotation bitmask
     // @Description: Servo channel mask to reverse rotation of FETtec ESC outputs.  Set bits must be contiguous.
     // @Bitmask: 0:SERVO1,1:SERVO2,2:SERVO3,3:SERVO4,4:SERVO5,5:SERVO6,6:SERVO7,7:SERVO8,8:SERVO9,9:SERVO10,10:SERVO11,11:SERVO12,12:SERVO13,13:SERVO14,14:SERVO15,15:SERVO16
     // @RebootRequired: True
     // @User: Standard
-    AP_GROUPINFO("REVMASK",  2, AP_FETtecOneWire, _reverse_mask, 0),
+    AP_GROUPINFO("REVMSK",  2, AP_FETtecOneWire, _reverse_mask, 0),
 
     // @Param: POLES
     // @DisplayName: Nr. electrical poles
@@ -75,16 +75,6 @@ AP_FETtecOneWire::AP_FETtecOneWire()
     }
 #endif
     _singleton = this;
-
-    _response_length[uint8_t(msg_type::OK)] = 1;
-    _response_length[uint8_t(msg_type::BL_START_FW)] = 0;        // Bootloader only
-#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-    _response_length[uint8_t(msg_type::REQ_TYPE)] = 1;
-    _response_length[uint8_t(msg_type::REQ_SN)] = 12;
-    _response_length[uint8_t(msg_type::REQ_SW_VER)] = 2;
-#endif
-    _response_length[uint8_t(msg_type::SET_FAST_COM_LENGTH)] = 1;
-    _response_length[uint8_t(msg_type::SET_TLM_TYPE)] = 1;
 }
 
 /**
@@ -214,28 +204,13 @@ void AP_FETtecOneWire::configuration_check()
     @param length length of the bytes array (max 4)
     @return false if length is bigger than MAX_TRANSMIT_LENGTH, true on write success
 */
-bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint8_t length)
+
+bool AP_FETtecOneWire::transmit(const uint8_t* bytes, uint8_t length)
 {
-    /*
-    a frame looks like:
-    byte 1 = frame header (master is always 0x01)
-    byte 2 = target ID (5bit)
-    byte 3 & 4 = frame type (always 0x00, 0x00 used for bootloader. here just for compatibility)
-    byte 5 = frame length over all bytes
-    byte 6 - X = request type, followed by the payload
-    byte X+1 = 8bit CRC
-    */
-    uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01};
-    transmit_arr[1] = esc_id+uint8_t(1); // one-indexed ESC ID
-    if (length > MAX_TRANSMIT_LENGTH) {
-        return false; // no, do not send at all
+    if (length > _uart->txspace()) {
+        return false;
     }
-    transmit_arr[4] = length + FRAME_OVERHEAD;
-    for (uint8_t i = 0; i < length; i++) {
-        transmit_arr[i + 5] = bytes[i];
-    }
-    transmit_arr[length + 5] = crc8_dvb_update(0, transmit_arr, length + 5); // crc
-    _uart->write(transmit_arr, length + FRAME_OVERHEAD);
+    _uart->write(bytes, length);
     return true;
 }
 
@@ -326,12 +301,13 @@ void AP_FETtecOneWire::pull_reset()
     @param req_len transmit request length
     @return true if the request is completed, false if dont
 */
-bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command, uint8_t* response,
-        return_type return_full_frame, const uint8_t req_len)
+template <typename T>
+bool AP_FETtecOneWire::pull_command(const T &cmd, uint8_t* response,
+                                    return_type return_full_frame)
 {
     if (!_pull_busy) {
-        _pull_busy = transmit(esc_id, command, req_len);
-    } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
+        _pull_busy = transmit(cmd);
+    } else if (receive(response, cmd.response_length(), return_full_frame) == receive_response::ANSWER_VALID) {
         _pull_busy = false;
         return true;
     }
@@ -345,7 +321,6 @@ bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command
 void AP_FETtecOneWire::scan_escs()
 {
     uint8_t response[MAX_RESPONSE_LENGTH];
-    uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
     if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? 5000U : 2000U)) {
@@ -365,19 +340,18 @@ void AP_FETtecOneWire::scan_escs()
             _found_escs[i].active = false;
         }
         if (now > 500000U) {
-            _scan.state++;
+            _scan.state = scan_state_t::IN_BOOTLOADER;
         }
         return;
         break;
 
     // is bootloader running?
     case scan_state_t::IN_BOOTLOADER:
-        request[0] = uint8_t(msg_type::OK);
-        if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
+        if (pull_command(PackedMessage<OK>{uint8_t(_scan.id+1), OK{}}, response, return_type::FULL_FRAME)) {
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
             if (response[0] == 0x02) {
-                _scan.state++; // is in bootloader, must start firmware
+                _scan.state = scan_state_t::START_FW; // is in bootloader, must start firmware
             } else {
                 if (!_found_escs[_scan.id].active) {
                     _found_escs_count++; // found a new ESC not in bootloader
@@ -392,28 +366,23 @@ void AP_FETtecOneWire::scan_escs()
             return;
         }
         break;
-
     // start the firmware
     case scan_state_t::START_FW:
-        request[0] = uint8_t(msg_type::BL_START_FW);
-        if (transmit(_scan.id, request, 1)) {
-            _scan.state++;
+        if (transmit(PackedMessage<START_FW>{uint8_t(_scan.id+1), START_FW{}})) {
+            _scan.state = scan_state_t::WAIT_START_FW;
         }
         return;
-        break;
 
     // wait for the firmware to start
     case scan_state_t::WAIT_START_FW:
         _uart->discard_input(); // discard the answer to the previous transmit
-        _scan.state = IN_BOOTLOADER;
+        _scan.state = scan_state_t::IN_BOOTLOADER;
         return;
-        break;
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     // ask the ESC type
     case scan_state_t::ESC_TYPE:
-        request[0] = uint8_t(msg_type::REQ_TYPE);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(PackedMessage<REQ_TYPE>{uint8_t(_scan.id+1), REQ_TYPE{}}, response, return_type::RESPONSE)) {
             _found_escs[_scan.id].esc_type = response[0];
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
@@ -424,8 +393,7 @@ void AP_FETtecOneWire::scan_escs()
 
     // ask the software version
     case scan_state_t::SW_VER:
-        request[0] = uint8_t(msg_type::REQ_SW_VER);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(PackedMessage<REQ_SW_VER>{uint8_t(_scan.id+1), REQ_SW_VER{}}, response, return_type::RESPONSE)) {
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
             _scan.rx_try_cnt = 0;
@@ -437,8 +405,7 @@ void AP_FETtecOneWire::scan_escs()
 
     // ask the serial number
     case scan_state_t::SN:
-        request[0] = uint8_t(msg_type::REQ_SN);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        if (pull_command(PackedMessage<REQ_SN>{uint8_t(_scan.id+1), REQ_SN{}}, response, return_type::RESPONSE)) {
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serial_number[i] = response[i];
             }
@@ -469,11 +436,11 @@ void AP_FETtecOneWire::scan_escs()
 
     // configure fast-throttle command header
     case scan_state_t::CONFIG_FAST_THROTTLE:
-        if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
+        if (pull_command(PackedMessage<SET_FAST_COM_LENGTH>{uint8_t(_scan.id+1), SET_FAST_COM_LENGTH{_fast_throttle_command.byte_count, _fast_throttle_command.min_esc_id, _fast_throttle_command.esc_count}}, response, return_type::RESPONSE)) {
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
 #if HAL_WITH_ESC_TELEM
-            _scan.state++;
+            _scan.state = scan_state_t::CONFIG_TLM;
 #else
             _configured_escs++;
             _scan.state = CONFIG_NEXT_ACTIVE_ESC;
@@ -485,13 +452,14 @@ void AP_FETtecOneWire::scan_escs()
 #if HAL_WITH_ESC_TELEM
     // configure telemetry mode
     case scan_state_t::CONFIG_TLM:
-        request[0] = uint8_t(msg_type::SET_TLM_TYPE);
-        request[1] = 1; // Alternative telemetry mode -> a single ESC sends it's full telem (Temp, Volt, Current, ERPM, Consumption, CrcErrCount) in a single frame
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
+        // 1 here means Alternative telemetry mode -> a single ESC
+        // sends it's full telem (Temp, Volt, Current, ERPM,
+        // Consumption, CrcErrCount) in a single frame
+        if (pull_command(PackedMessage<SET_TLM_TYPE>{uint8_t(_scan.id+1), SET_TLM_TYPE{1}}, response, return_type::RESPONSE)) {
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
             _configured_escs++;
-            _scan.state++;
+            _scan.state = scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
             return;
         }
         break;
@@ -508,6 +476,10 @@ void AP_FETtecOneWire::scan_escs()
             _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
         }
         return;
+        break;
+
+    case scan_state_t::DONE:
+        INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
         break;
     }
 
@@ -555,10 +527,9 @@ void AP_FETtecOneWire::config_fast_throttle()
         _fast_throttle.byte_count++;
         bit_count -= 8;
     }
-    _fast_throttle.command[0] = uint8_t(msg_type::SET_FAST_COM_LENGTH);
-    _fast_throttle.command[1] = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
-    _fast_throttle.command[2] = _fast_throttle.min_id+1;   // one-indexed min ESC id
-    _fast_throttle.command[3] = _found_escs_count;         // count of ESCs that will get signals
+    _fast_throttle_command.byte_count = _fast_throttle.byte_count; // just for older ESC FW versions since 1.0 001 this byte is ignored as the ESC calculates it itself
+    _fast_throttle_command.min_esc_id = _fast_throttle.min_id+1;   // one-indexed min ESC id
+    _fast_throttle_command.esc_count = _found_escs_count;         // count of ESCs that will get signals
 }
 
 #if HAL_WITH_ESC_TELEM
@@ -775,12 +746,8 @@ void AP_FETtecOneWire::update()
 void AP_FETtecOneWire::beep(const uint8_t beep_frequency)
 {
     if (_found_escs_count > 0) {
-        const uint8_t request[2] = {uint8_t(msg_type::BEEP), beep_frequency};
-        const uint8_t spacer[2] = {0, 0};
         for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
-            transmit(i, request, sizeof(request));
-            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, sizeof(spacer));
+            transmit(PackedMessage<Beep>{i, Beep{beep_frequency}});
         }
     }
 }
@@ -796,12 +763,8 @@ void AP_FETtecOneWire::beep(const uint8_t beep_frequency)
 void AP_FETtecOneWire::led_color(const uint8_t r, const uint8_t g, const uint8_t b)
 {
     if (_found_escs_count > 0) {
-        const uint8_t request[4] = {uint8_t(msg_type::SET_LED_TMP_COLOR), r, g, b};
-        const uint8_t spacer[2] = {0, 0};
         for (uint8_t i = _fast_throttle.min_id; i <= _fast_throttle.max_id; i++) {
-            transmit(i, request, sizeof(request));
-            // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here
-            _uart->write(spacer, sizeof(spacer));
+            transmit(PackedMessage<LEDColour>{i, LEDColour{r, g, b}});
         }
     }
 }

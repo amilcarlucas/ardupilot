@@ -27,7 +27,7 @@ param fetch
 
 #param set SIM_FTOWESC_FM 1  # fail mask
 
-TODO: ./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter.FETtecOneWireESC
+./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter.FETtecESC
 
 */
 
