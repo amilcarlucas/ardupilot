@@ -40,7 +40,7 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
     // @Bitmask: 0:SERVO1,1:SERVO2,2:SERVO3,3:SERVO4,4:SERVO5,5:SERVO6,6:SERVO7,7:SERVO8,8:SERVO9,9:SERVO10,10:SERVO11,11:SERVO12,12:SERVO13,13:SERVO14,14:SERVO15,15:SERVO16
     // @RebootRequired: True
     // @User: Standard
-    AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask, 0),
+    AP_GROUPINFO("MASK",  1, AP_FETtecOneWire, _motor_mask_parameter, 0),
 
     // @Param: RVMASK
     // @DisplayName: Servo channel reverse rotation bitmask
@@ -49,13 +49,15 @@ const AP_Param::GroupInfo AP_FETtecOneWire::var_info[] {
     // @User: Standard
     AP_GROUPINFO("RVMASK",  2, AP_FETtecOneWire, _reverse_mask_parameter, 0),
 
+#if HAL_WITH_ESC_TELEM
     // @Param: POLES
     // @DisplayName: Nr. electrical poles
     // @Description: Number of motor electrical poles
     // @Range: 2 50
     // @RebootRequired: False
     // @User: Standard
-    AP_GROUPINFO("POLES", 3, AP_FETtecOneWire, _pole_count, 14),
+    AP_GROUPINFO("POLES", 3, AP_FETtecOneWire, _pole_count_parameter, 14),
+#endif
 
     AP_GROUPEND
 };
@@ -111,11 +113,11 @@ void AP_FETtecOneWire::init()
 
     // get the user-configured FETtec ESCs bitmask parameter
     // if the user changes this parameter, he will have to reboot
-    _mask = uint16_t(_motor_mask.get());
-    uint16_t smask = _mask; // shifted version of the _mask user parameter
-    uint16_t mmask = 0;     // will be a copy of _mask with only the contiguous LSBs set
+    _motor_mask = uint16_t(_motor_mask_parameter.get());
+    uint16_t smask = _motor_mask; // shifted version of the _motor_mask user parameter
+    uint16_t mmask = 0;     // will be a copy of _motor_mask with only the contiguous LSBs set
 
-    static_assert(MOTOR_COUNT_MAX <= sizeof(_mask)*8, "_mask is too narrow for MOTOR_COUNT_MAX ESCs");
+    static_assert(MOTOR_COUNT_MAX <= sizeof(_motor_mask)*8, "_motor_mask is too narrow for MOTOR_COUNT_MAX ESCs");
     static_assert(MOTOR_COUNT_MAX <= sizeof(_reverse_mask)*8, "_reverse_mask is too narrow for MOTOR_COUNT_MAX ESCs");
     static_assert(MOTOR_COUNT_MAX <= sizeof(smask)*8, "smask is too narrow for MOTOR_COUNT_MAX ESCs");
     static_assert(MOTOR_COUNT_MAX <= sizeof(mmask)*8, "mmask is too narrow for MOTOR_COUNT_MAX ESCs");
@@ -129,7 +131,7 @@ void AP_FETtecOneWire::init()
         smask >>= 1;
         _nr_escs_in_bitmask++;
 
-        // build a copy of _mask with only the contiguous LSBs set
+        // build a copy of _motor_mask with only the contiguous LSBs set
         mmask |= 0x1;
         mmask <<= 1;
     }
@@ -171,11 +173,11 @@ void AP_FETtecOneWire::configuration_check()
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
-    const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_mask);
+    const uint8_t num_active_escs = AP::esc_telem().get_num_active_escs(_motor_mask);
     telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 2 * MOTOR_COUNT_MAX);
 #endif
 
-    if (__builtin_popcount(_motor_mask.get()) != _nr_escs_in_bitmask) {
+    if (__builtin_popcount(_motor_mask_parameter.get()) != _nr_escs_in_bitmask) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in SERVO_FTW_MASK parameter bits");
     }
 
@@ -749,11 +751,11 @@ void AP_FETtecOneWire::update()
         inc_sent_msg_count(); // increment message packet count for every ESC
 
         if (_requested_telemetry_from_esc != -1 && tlm_ok == receive_response::ANSWER_VALID) { //only use telemetry if it is ok.
-            if (_pole_count < 2) { // if user set parameter is invalid use 14 Poles
-                _pole_count = 14;
+            if (_pole_count_parameter < 2) { // if user set parameter is invalid use 14 Poles
+                _pole_count_parameter = 14;
             }
             const float tx_err_rate = calc_tx_crc_error_perc(tlm_from_id, tx_err_count);
-            update_rpm(tlm_from_id, centi_erpm*100*2/_pole_count.get(), tx_err_rate);
+            update_rpm(tlm_from_id, centi_erpm*100*2/_pole_count_parameter.get(), tx_err_rate);
 
             update_telem_data(tlm_from_id, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
         }
