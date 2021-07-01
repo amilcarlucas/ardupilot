@@ -143,7 +143,7 @@ void AP_FETtecOneWire::init()
         smask >>= 1;
         _nr_escs_in_bitmask++;
 
-        // build a copy of _motor_mask with only the contiguous LSBs set
+        // build a copy of _motor_mask_parameter with only the contiguous LSBs set
         mmask |= 0x1;
         mmask <<= 1;
     }
