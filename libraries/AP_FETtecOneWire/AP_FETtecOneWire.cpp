@@ -680,7 +680,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         // 11 bits - throttle value per ESC
         // 8  bits - frame CRC
         // 7  dummy for rounding up the division by 8
-        uint8_t fast_throttle_command[(8+4+(11*MOTOR_COUNT_MAX)+8+7)/8] = { 0 };
+        uint8_t fast_throttle_command[(8+4+(11*MOTOR_COUNT_MAX)+8+7)/8] { 0 };
         uint8_t act_throttle_command = 0;
 
         // byte 1:
