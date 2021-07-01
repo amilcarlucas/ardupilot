@@ -309,32 +309,43 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
 }
 
 /**
-    Resets a pending pull request
-*/
-void AP_FETtecOneWire::pull_reset()
-{
-    _pull_busy = false;
-}
-
-/**
     Pulls a complete request between flight controller and ESC
     @param esc_id  id of the ESC
     @param command 8bit array containing the command that should be send including the possible payload
     @param response 8bit array where the response will be stored in
     @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @param req_len transmit request length
-    @return true if the request is completed, false if dont
+    @return pull_state enum
 */
-bool AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command, uint8_t* response,
+AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const uint8_t esc_id, const uint8_t* command, uint8_t* response,
         return_type return_full_frame, const uint8_t req_len)
 {
     if (!_pull_busy) {
         _pull_busy = transmit(esc_id, command, req_len);
     } else if (receive(response, _response_length[command[0]], return_full_frame) == receive_response::ANSWER_VALID) {
+        _scan.rx_try_cnt = 0;
+        _scan.trans_try_cnt = 0;
         _pull_busy = false;
-        return true;
+        return pull_state::COMPLETED;
     }
-    return false;
+
+    // it will try multiple times to read the response of a request
+    if (_scan.rx_try_cnt > 1) {
+        _scan.rx_try_cnt = 0;
+
+        _pull_busy = false; // re-transmit the request, in the hope of getting a valid response later
+
+        if (_scan.trans_try_cnt > 4) {
+            // the request re-transmit failed multiple times
+            _scan.trans_try_cnt = 0;
+            return pull_state::FAILED;
+        } else {
+            _scan.trans_try_cnt++;
+        }
+    } else {
+        _scan.rx_try_cnt++;
+    }
+    return pull_state::BUSY;
 }
 
 /**
@@ -366,15 +377,15 @@ void AP_FETtecOneWire::scan_escs()
         if (now > 500000U) {
             _scan.state++;
         }
-        return;
         break;
 
     // is bootloader running?
     case scan_state_t::IN_BOOTLOADER:
         request[0] = uint8_t(msg_type::OK);
-        if (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
+        switch (pull_command(_scan.id, request, response, return_type::FULL_FRAME, 1)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
             if (response[0] == 0x02) {
                 _scan.state++; // is in bootloader, must start firmware
             } else {
@@ -388,7 +399,10 @@ void AP_FETtecOneWire::scan_escs()
                 _scan.state = scan_state_t::NEXT_ID;
 #endif
             }
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::NEXT_ID;
+            break;
         }
         break;
 
@@ -398,53 +412,63 @@ void AP_FETtecOneWire::scan_escs()
         if (transmit(_scan.id, request, 1)) {
             _scan.state++;
         }
-        return;
         break;
 
     // wait for the firmware to start
     case scan_state_t::WAIT_START_FW:
         _uart->discard_input(); // discard the answer to the previous transmit
         _scan.state = IN_BOOTLOADER;
-        return;
         break;
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     // ask the ESC type
     case scan_state_t::ESC_TYPE:
         request[0] = uint8_t(msg_type::REQ_TYPE);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        switch (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
             _found_escs[_scan.id].esc_type = response[0];
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
             _scan.state++;
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::NEXT_ID;
+            break;
         }
         break;
 
     // ask the software version
     case scan_state_t::SW_VER:
         request[0] = uint8_t(msg_type::REQ_SW_VER);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        switch (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
             _scan.state++;
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::NEXT_ID;
+            break;
         }
         break;
 
     // ask the serial number
     case scan_state_t::SN:
         request[0] = uint8_t(msg_type::REQ_SN);
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        switch (pull_command(_scan.id, request, response, return_type::RESPONSE, 1)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serial_number[i] = response[i];
             }
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
             _scan.state++;
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::NEXT_ID;
+            break;
         }
         break;
 #endif
@@ -463,21 +487,24 @@ void AP_FETtecOneWire::scan_escs()
                 _scan.state = scan_state_t::CONFIG_FAST_THROTTLE;
             }
         }
-        return;
         break;
 
     // configure fast-throttle command header
     case scan_state_t::CONFIG_FAST_THROTTLE:
-        if (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
+        switch (pull_command(_scan.id, _fast_throttle.command, response, return_type::RESPONSE, 4)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
 #if HAL_WITH_ESC_TELEM
             _scan.state++;
 #else
             _configured_escs++;
             _scan.state = CONFIG_NEXT_ACTIVE_ESC;
 #endif
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
+            break;
         }
         break;
 
@@ -486,12 +513,16 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::CONFIG_TLM:
         request[0] = uint8_t(msg_type::SET_TLM_TYPE);
         request[1] = 1; // Alternative telemetry mode -> a single ESC sends it's full telem (Temp, Volt, Current, ERPM, Consumption, CrcErrCount) in a single frame
-        if (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
-            _scan.rx_try_cnt = 0;
-            _scan.trans_try_cnt = 0;
+        switch (pull_command(_scan.id, request, response, return_type::RESPONSE, 2)) {
+        case pull_state::BUSY:
+            break;
+        case pull_state::COMPLETED:
             _configured_escs++;
             _scan.state++;
-            return;
+            break;
+        case pull_state::FAILED:
+            _scan.state = scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
+            break;
         }
         break;
 #endif
@@ -506,25 +537,7 @@ void AP_FETtecOneWire::scan_escs()
             _scan.id = 0;
             _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
         }
-        return;
         break;
-    }
-
-    // it will try twice to read the response of a request
-    if (_scan.rx_try_cnt > 1) {
-        _scan.rx_try_cnt = 0;
-
-        pull_reset(); // re-transmit the request, in the hope of getting a valid response later
-
-        if (_scan.trans_try_cnt > 4) {
-            // the request re-transmit failed multiple times, give-up on this ESC, goto the next one
-            _scan.trans_try_cnt = 0;
-            _scan.state = _scan.state < scan_state_t::NEXT_ID ? scan_state_t::NEXT_ID : scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
-        } else {
-            _scan.trans_try_cnt++;
-        }
-    } else {
-        _scan.rx_try_cnt++;
     }
 }
 
