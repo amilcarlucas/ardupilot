@@ -251,24 +251,32 @@ private:
         NOT_OK              = 2,
         BL_START_FW         = 3,  ///< Bootloader only - exit the boot loader and start the standard firmware
         BL_PAGES_TO_FLASH   = 4,  ///< Bootloader only
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         REQ_TYPE            = 5,  ///< ESC type
         REQ_SN              = 6,  ///< serial number
         REQ_SW_VER          = 7,  ///< software version
+#endif
+#if HAL_AP_FETTEC_ESC_BEEP
         BEEP                = 13, ///< make noise
+#endif
         SET_FAST_COM_LENGTH = 26, ///< configure fast-throttle command
         SET_TLM_TYPE        = 27, ///< telemetry operation mode
         SIZEOF_RESPONSE_LENGTH,   ///< size of the _response_length array used in the pull_command() function, you can move this one around
+#if HAL_AP_FETTEC_ESC_LIGHT
         SET_LED_TMP_COLOR   = 51, ///< msg_type::SET_LED_TMP_COLOR is ignored here. You must update this if you add new msg_type cases
+#endif
     };
 
-    enum scan_state_t : uint8_t {
+    enum class scan_state_t : uint8_t {
         WAIT_FOR_BOOT,            ///< initial state, wait for a ESC(s) cold-start
         IN_BOOTLOADER,            ///< in bootloader?
         START_FW,                 ///< start the firmware
         WAIT_START_FW,            ///< wait for the firmware to start
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         ESC_TYPE,                 ///< ask the ESC type
         SW_VER,                   ///< ask the software version
         SN,                       ///< ask the serial number
+#endif
         NEXT_ID,                  ///< increment ESC ID and jump to IN_BOOTLOADER
         CONFIG_FAST_THROTTLE,     ///< configure fast-throttle command header
         CONFIG_TLM,               ///< configure telemetry mode
@@ -281,7 +289,7 @@ private:
     {
         uint32_t last_us;          ///< last transaction time in microseconds
         uint8_t id;                ///< Zero-indexed ID of the used ESC
-        uint8_t state;             ///< scan state-machine state
+        scan_state_t state;        ///< scan state-machine state
         uint8_t rx_try_cnt;        ///< receive try counter
         uint8_t trans_try_cnt;     ///< transaction (transmit and response) try counter
     } _scan;

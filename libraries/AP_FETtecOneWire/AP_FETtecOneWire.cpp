@@ -405,7 +405,7 @@ void AP_FETtecOneWire::scan_escs()
             _found_escs[i].active = false;
         }
         if (now > 500000U) {
-            _scan.state++;
+            _scan.state = scan_state_t::IN_BOOTLOADER;
         }
         break;
 
@@ -417,7 +417,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         case pull_state::COMPLETED:
             if (response[0] == 0x02) {
-                _scan.state++; // is in bootloader, must start firmware
+                _scan.state = scan_state_t::START_FW; // is in bootloader, must start firmware
             } else {
                 if (!_found_escs[_scan.id].active) {
                     _found_escs_count++; // found a new ESC not in bootloader
@@ -440,14 +440,14 @@ void AP_FETtecOneWire::scan_escs()
     case scan_state_t::START_FW:
         request[0] = uint8_t(msg_type::BL_START_FW);
         if (transmit(_scan.id, request, 1)) {
-            _scan.state++;
+            _scan.state = scan_state_t::WAIT_START_FW;
         }
         break;
 
     // wait for the firmware to start
     case scan_state_t::WAIT_START_FW:
         _uart->discard_input(); // discard the answer to the previous transmit
-        _scan.state = IN_BOOTLOADER;
+        _scan.state = scan_state_t::IN_BOOTLOADER;
         break;
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
@@ -459,7 +459,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         case pull_state::COMPLETED:
             _found_escs[_scan.id].esc_type = response[0];
-            _scan.state++;
+            _scan.state = scan_state_t::SW_VER;
             break;
         case pull_state::FAILED:
             _scan.state = scan_state_t::NEXT_ID;
@@ -476,7 +476,7 @@ void AP_FETtecOneWire::scan_escs()
         case pull_state::COMPLETED:
             _found_escs[_scan.id].firmware_version = response[0];
             _found_escs[_scan.id].firmware_sub_version = response[1];
-            _scan.state++;
+            _scan.state = scan_state_t::SN;
             break;
         case pull_state::FAILED:
             _scan.state = scan_state_t::NEXT_ID;
@@ -494,7 +494,7 @@ void AP_FETtecOneWire::scan_escs()
             for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
                 _found_escs[_scan.id].serial_number[i] = response[i];
             }
-            _scan.state++;
+            _scan.state = scan_state_t::NEXT_ID;
             break;
         case pull_state::FAILED:
             _scan.state = scan_state_t::NEXT_ID;
@@ -526,7 +526,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         case pull_state::COMPLETED:
 #if HAL_WITH_ESC_TELEM
-            _scan.state++;
+            _scan.state = scan_state_t::CONFIG_TLM;
 #else
             _configured_escs++;
             _scan.state = CONFIG_NEXT_ACTIVE_ESC;
@@ -548,7 +548,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         case pull_state::COMPLETED:
             _configured_escs++;
-            _scan.state++;
+            _scan.state = scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
             break;
         case pull_state::FAILED:
             _scan.state = scan_state_t::CONFIG_NEXT_ACTIVE_ESC;
@@ -567,6 +567,10 @@ void AP_FETtecOneWire::scan_escs()
             _scan.id = 0;
             _scan.state = scan_state_t::DONE;  // one or more ESCs found, scan is completed
         }
+        break;
+
+    case scan_state_t::DONE:
+        INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
         break;
     }
 }
