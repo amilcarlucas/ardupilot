@@ -97,20 +97,6 @@ private:
     AP_Int8 _pole_count_parameter;
 #endif
 
-    enum class return_type : uint8_t
-    {
-        RESPONSE,
-        FULL_FRAME
-    };
-
-    enum class receive_response : uint8_t
-    {
-        NO_ANSWER_YET,
-        ANSWER_VALID,
-        CRC_MISSMATCH,
-        REQ_OVERLENGTH
-    };
-
     /**
         initialize the serial port, scan the OneWire bus, setup the found ESCs
     */
@@ -130,6 +116,20 @@ private:
     */
     bool transmit(const uint8_t esc_id, const uint8_t *bytes, uint8_t length);
 
+    enum class return_type : uint8_t
+    {
+        RESPONSE,
+        FULL_FRAME
+    };
+
+    enum class receive_response : uint8_t
+    {
+        NO_ANSWER_YET,
+        ANSWER_VALID,
+        CRC_MISSMATCH,
+        REQ_OVERLENGTH
+    };
+
     /**
         reads the FETtec OneWire answer frame of an ESC
         @param bytes 8 bit byte array, where the received answer gets stored in
@@ -139,10 +139,11 @@ private:
     */
     receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
 
-    /**
-        Resets a pending pull request
-    */
-    void pull_reset();
+    enum class pull_state : uint8_t {
+        BUSY,
+        COMPLETED,
+        FAILED
+    };
 
     /**
         Pulls a complete request between flight controller and ESC
@@ -151,9 +152,9 @@ private:
         @param response 8bit array where the response will be stored in
         @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
         @param req_len transmit request length
-        @return true if the request is completed, false if dont
+        @return pull_state enum
     */
-    bool pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame, const uint8_t req_len);
+    pull_state pull_command(const uint8_t esc_id, const uint8_t *command, uint8_t *response, return_type return_full_frame, const uint8_t req_len);
 
     /**
         Scans for all ESCs in bus. Configures fast-throttle and telemetry for the ones found.
