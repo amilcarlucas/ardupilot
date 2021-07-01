@@ -215,6 +215,9 @@ void AP_FETtecOneWire::configuration_check()
 
     if (!all_escs_contiguous || !all_escs_found || !all_escs_configured || telem_rx_missing) {
         // re-init the entire device driver
+#if HAL_WITH_ESC_TELEM
+        _sent_msg_count = 0;
+#endif
         _scan.state = scan_state_t::WAIT_FOR_BOOT;
         _initialised = false;
     }
