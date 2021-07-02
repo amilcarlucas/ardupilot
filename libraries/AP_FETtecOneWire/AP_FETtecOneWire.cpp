@@ -123,6 +123,10 @@ void AP_FETtecOneWire::init()
     _crc_error_rate_factor = 100.0f/(float)_update_rate_hz; //to save the division in loop, precalculate by the motor loops 100%/400Hz
 #endif
 
+    // do not read telemetry information until a fast-throttle command is send
+    // and if HAL_WITH_ESC_TELEM is disabled this also ensures correct operation
+    _requested_telemetry_from_esc = -1;
+
     // get the user-configured FETtec ESCs bitmask parameter
     // if the user changes this parameter, he will have to reboot
     _motor_mask = uint16_t(_motor_mask_parameter.get());
@@ -798,18 +802,18 @@ void AP_FETtecOneWire::update()
     TelemetryData t {};
     int16_t centi_erpm = 0;    // initialize to prevent false positive error: ‘centi_erpm’ may be used uninitialized in this function
     uint16_t tx_err_count = 0; // initialize to prevent false positive error: ‘tx_err_count’ may be used uninitialized in this function
-    receive_response tlm_ok = receive_response::NO_ANSWER_YET; //decode_single_esc_telemetry returns 1 if telemetry is ok, 0 if its waiting and 2 if there is a crc mismatch.
+    receive_response tlm_ok = receive_response::NO_ANSWER_YET;
     uint8_t tlm_from_id = 0;
     if (_requested_telemetry_from_esc != -1) {
         tlm_ok = decode_single_esc_telemetry(t, centi_erpm, tx_err_count, tlm_from_id);
+        if (_nr_escs_in_bitmask) {
+            _requested_telemetry_from_esc++;
+            if (_requested_telemetry_from_esc > _fast_throttle.max_id) {
+                _requested_telemetry_from_esc = _fast_throttle.min_id; // restart from the first ESC
+            }
+        }
     } else {
         _requested_telemetry_from_esc = _fast_throttle.min_id; // start from the first ESC
-    }
-    if (_nr_escs_in_bitmask) {
-        _requested_telemetry_from_esc++;
-        if (_requested_telemetry_from_esc > _fast_throttle.max_id) {
-            _requested_telemetry_from_esc = _fast_throttle.min_id; // restart from the first ESC
-        }
     }
 #endif
 
