@@ -335,6 +335,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
                 }
                 return receive_response::ANSWER_VALID;
             } else {
+                _uart->discard_input();
                 return receive_response::CRC_MISSMATCH;
             }
         } else {
