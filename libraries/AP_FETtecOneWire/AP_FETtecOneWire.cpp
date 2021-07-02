@@ -256,11 +256,10 @@ void AP_FETtecOneWire::consume_bytes(uint8_t n)
 /**
     reads the FETtec OneWire answer frame of an ESC
     @param bytes 8 bit byte array, where the received answer gets stored in
-    @param length the expected answer length
-    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+    @param length bytes available for storage in *bytes
     @return receive_response enum
 */
-AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length, return_type return_full_frame)
+AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uint8_t length)
 {
     /*
     a frame looks like:
@@ -297,12 +296,11 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     move_preamble_in_receive_buffer();
 
     // we know what length of message should be present
-    const uint8_t raw_length = FRAME_OVERHEAD + length;
-    if (receive_buf_used < raw_length) {
+    if (receive_buf_used < length) {
         return receive_response::NO_ANSWER_YET;
     }
 
-    if (crc8_dvb_update(0, receive_buf, raw_length-1) != receive_buf[raw_length-1]) {
+    if (crc8_dvb_update(0, receive_buf, length-1) != receive_buf[length-1]) {
         // bad message; shift away this preamble byte to try to find
         // another message
         move_preamble_in_receive_buffer(1);
@@ -310,16 +308,9 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     }
 
     // message is good
-    switch (return_full_frame) {
-    case return_type::RESPONSE:
-        memcpy(bytes, &receive_buf[5], length);
-        break;
-    case return_type::FULL_FRAME:
-        memcpy(bytes, receive_buf, raw_length);
-        break;
-    }
+    memcpy(bytes, receive_buf, length);
 
-    consume_bytes(raw_length);
+    consume_bytes(length);
 
     return receive_response::ANSWER_VALID;
 }
@@ -329,21 +320,28 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::receive(uint8_t* bytes, uin
     @param esc_id  id of the ESC
     @param command 8bit array containing the command that should be send including the possible payload
     @param response 8bit array where the response will be stored in
-    @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
     @param req_len transmit request length
     @return pull_state enum
 */
-template <typename T>
-AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const T &cmd, uint8_t* response,
-                                    return_type return_full_frame)
+template <typename T, typename R>
+AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const T &cmd, R &response)
 {
+    R temp_response{response}; // remember esc_id and msgid
     if (!_pull_busy) {
         _pull_busy = transmit(cmd);
-    } else if (receive(response, cmd.response_length(), return_full_frame) == receive_response::ANSWER_VALID) {
-        _scan.rx_try_cnt = 0;
-        _scan.trans_try_cnt = 0;
-        _pull_busy = false;
-        return pull_state::COMPLETED;
+    } else if (receive((uint8_t*)&response, sizeof(response)) == receive_response::ANSWER_VALID) {
+        if (response.msg.msgid != temp_response.msg.msgid) {
+            // we got a valid packet back - but it wasn't the correct
+            // message type!
+        } else if (temp_response.esc_id != response.esc_id) {
+            // we got a valid packet back - but it wasn't for the correct ESC!
+        } else {
+            response = temp_response;
+            _scan.rx_try_cnt = 0;
+            _scan.trans_try_cnt = 0;
+            _pull_busy = false;
+            return pull_state::COMPLETED;
+        }
     }
 
     // it will try multiple times to read the response of a request
@@ -371,8 +369,6 @@ AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const T &cmd, uint8_
 */
 void AP_FETtecOneWire::scan_escs()
 {
-    uint8_t response[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
-
     const uint32_t now = AP_HAL::micros();
     if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? 5000U : 2000U)) {
         // the scan_escs() call period must be bigger than 2000 US,
@@ -380,6 +376,8 @@ void AP_FETtecOneWire::scan_escs()
         return;
     }
     _scan.last_us = now;
+
+    PackedMessage<OK> ok_response{uint8_t(_scan.id+1), OK{}};
 
     switch (_scan.state) {
 
@@ -396,12 +394,12 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     // is bootloader running?
-    case scan_state_t::IN_BOOTLOADER:
-        switch (pull_command(PackedMessage<OK>{uint8_t(_scan.id+1), OK{}}, response, return_type::FULL_FRAME)) {
+    case scan_state_t::IN_BOOTLOADER: {
+        switch (pull_command(PackedMessage<OK>{uint8_t(_scan.id+1), OK{}}, ok_response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            if (response[0] == 0x02) {
+            if (ok_response.preamble == 0x02) {
                 _scan.state = scan_state_t::START_FW; // is in bootloader, must start firmware
             } else {
                 if (!_found_escs[_scan.id].active) {
@@ -420,7 +418,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
-
+    }
     // start the firmware
     case scan_state_t::START_FW:
         if (transmit(PackedMessage<START_FW>{uint8_t(_scan.id+1), START_FW{}})) {
@@ -436,12 +434,13 @@ void AP_FETtecOneWire::scan_escs()
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     // ask the ESC type
-    case scan_state_t::ESC_TYPE:
-        switch (pull_command(PackedMessage<REQ_TYPE>{uint8_t(_scan.id+1), REQ_TYPE{}}, response, return_type::RESPONSE)) {
+    case scan_state_t::ESC_TYPE: {
+        PackedMessage<ESC_TYPE> response{uint8_t(_scan.id+1), ESC_TYPE{}};
+        switch (pull_command(PackedMessage<REQ_TYPE>{uint8_t(_scan.id+1), REQ_TYPE{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            _found_escs[_scan.id].esc_type = response[0];
+            _found_escs[_scan.id].esc_type = response.esc_type;
             _scan.state = scan_state_t::SW_VER;
             break;
         case pull_state::FAILED:
@@ -449,15 +448,16 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
-
+    }
     // ask the software version
     case scan_state_t::SW_VER:
-        switch (pull_command(PackedMessage<REQ_SW_VER>{uint8_t(_scan.id+1), REQ_SW_VER{}}, response, return_type::RESPONSE)) {
+        PackedMessage<SW_VER> response{uint8_t(_scan.id+1), SW_VER{0, 0}};
+        switch (pull_command(PackedMessage<REQ_SW_VER>{uint8_t(_scan.id+1), REQ_SW_VER{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            _found_escs[_scan.id].firmware_version = response[0];
-            _found_escs[_scan.id].firmware_sub_version = response[1];
+            _found_escs[_scan.id].firmware_version = response.version;
+            _found_escs[_scan.id].firmware_sub_version = response.subversion;
             _scan.state = scan_state_t::SN;
             break;
         case pull_state::FAILED:
@@ -467,14 +467,17 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     // ask the serial number
-    case scan_state_t::SN:
-        switch (pull_command(PackedMessage<REQ_SN>{uint8_t(_scan.id+1), REQ_SN{}}, response, return_type::RESPONSE)) {
+    case scan_state_t::SN: {
+        PackedMessage<SN> response{uint8_t(_scan.id+1), SN{}};
+        switch (pull_command(PackedMessage<REQ_SN>{uint8_t(_scan.id+1), REQ_SN{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            for (uint8_t i = 0; i < SERIAL_NR_BITWIDTH; i++) {
-                _found_escs[_scan.id].serial_number[i] = response[i];
-            }
+            memset(_found_escs[_scan.id].serial_number, '\0', ARRAY_SIZE(_found_escs[_scan.id].serial_number));
+            memcpy(_found_escs[_scan.id].serial_number,
+                   response.sn,
+                   MIN(ARRAY_SIZE(_found_escs[_scan.id].serial_number),
+                       ARRAY_SIZE(response.sn)));
             _scan.state = scan_state_t::NEXT_ID;
             break;
         case pull_state::FAILED:
@@ -482,6 +485,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
+    }
 #endif
 
     // increment ESC ID and jump to IN_BOOTLOADER
@@ -501,8 +505,8 @@ void AP_FETtecOneWire::scan_escs()
         break;
 
     // configure fast-throttle command header
-    case scan_state_t::CONFIG_FAST_THROTTLE:
-        switch (pull_command(PackedMessage<SET_FAST_COM_LENGTH>{uint8_t(_scan.id+1), SET_FAST_COM_LENGTH{_fast_throttle_command.byte_count, _fast_throttle_command.min_esc_id, _fast_throttle_command.esc_count}}, response, return_type::RESPONSE)) {
+    case scan_state_t::CONFIG_FAST_THROTTLE: {
+        switch (pull_command(PackedMessage<SET_FAST_COM_LENGTH>{uint8_t(_scan.id+1), SET_FAST_COM_LENGTH{_fast_throttle_command.byte_count, _fast_throttle_command.min_esc_id, _fast_throttle_command.esc_count}}, ok_response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
@@ -518,14 +522,15 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
+    }
 
 #if HAL_WITH_ESC_TELEM
     // configure telemetry mode
-    case scan_state_t::CONFIG_TLM:
+    case scan_state_t::CONFIG_TLM: {
         // 1 here means Alternative telemetry mode -> a single ESC
         // sends it's full telem (Temp, Volt, Current, ERPM,
         // Consumption, CrcErrCount) in a single frame
-        switch (pull_command(PackedMessage<SET_TLM_TYPE>{uint8_t(_scan.id+1), SET_TLM_TYPE{1}}, response, return_type::RESPONSE)) {
+        switch (pull_command(PackedMessage<SET_TLM_TYPE>{uint8_t(_scan.id+1), SET_TLM_TYPE{1}}, ok_response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
@@ -537,6 +542,7 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
+    }
 #endif
 
     // increment ESC ID and jump to CONFIG_FAST_THROTTLE
@@ -632,7 +638,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 
     if (_found_escs_count > 0) {
         uint8_t telem[FRAME_OVERHEAD + TELEM_LENGTH];
-        ret = receive((uint8_t *) telem, TELEM_LENGTH, return_type::FULL_FRAME);
+        ret = receive((uint8_t *) telem, ARRAY_SIZE(telem));
 
         if (ret == receive_response::ANSWER_VALID) {
             if (telem[1] <= _fast_throttle.min_id || telem[1] > _fast_throttle.max_id+1) {

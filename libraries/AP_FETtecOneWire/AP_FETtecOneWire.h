@@ -123,12 +123,6 @@ private:
     */
     bool transmit(const uint8_t* bytes, uint8_t length);
 
-    enum class return_type : uint8_t
-    {
-        RESPONSE,
-        FULL_FRAME
-    };
-
     enum class receive_response : uint8_t
     {
         NO_ANSWER_YET,
@@ -140,11 +134,10 @@ private:
     /**
         reads the FETtec OneWire answer frame of an ESC
         @param bytes 8 bit byte array, where the received answer gets stored in
-        @param length the expected answer length
-        @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
+        @param length bytes available in bytes
         @return receive_response enum
     */
-    receive_response receive(uint8_t *bytes, uint8_t length, return_type return_full_frame);
+    receive_response receive(uint8_t *bytes, uint8_t length);
     uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
     uint8_t receive_buf_used;
     void move_preamble_in_receive_buffer(uint8_t search_start_pos = 0);
@@ -161,13 +154,11 @@ private:
         @param esc_id id of the ESC
         @param command 8bit array containing the command that should be send including the possible payload
         @param response 8bit array where the response will be stored in
-        @param return_full_frame can be return_type::RESPONSE or return_type::FULL_FRAME
         @param req_len transmit request length
         @return pull_state enum
     */
-    template <typename T>
-    pull_state pull_command(const T &cmd, uint8_t* response,
-                      return_type return_full_frame);
+    template <typename T, typename R>
+    pull_state pull_command(const T &cmd, R &response);
 
     /**
         Scans for all ESCs in bus. Configures fast-throttle and telemetry for the ones found.
@@ -303,33 +294,27 @@ private:
         void update_checksum() {
             checksum = crc8_dvb_update(0, (const uint8_t*)this, frame_length-1);
         }
-        // this method really, really needs to die:
-        uint8_t response_length() const { return msg.response_length(); }
     };
 
     class PACKED OK {
     public:
         uint8_t msgid { (uint8_t)msg_type::OK };
-        uint8_t response_length() const { return 1; }
     };
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     class PACKED REQ_TYPE {
     public:
         uint8_t msgid { (uint8_t)msg_type::REQ_TYPE };
-        uint8_t response_length() const { return 1; }
     };
 
     class PACKED REQ_SW_VER {
     public:
         uint8_t msgid { (uint8_t)msg_type::REQ_SW_VER };
-        uint8_t response_length() const { return 2; }
     };
 
     class PACKED REQ_SN {
     public:
         uint8_t msgid { (uint8_t)msg_type::REQ_SN };
-        uint8_t response_length() const { return 12; }
     };
 #endif
 
@@ -340,7 +325,6 @@ private:
         { }
         uint8_t msgid { (uint8_t)msg_type::SET_TLM_TYPE };
         uint8_t tlm_type;
-        uint8_t response_length() const { return 1; }
     };
 
     class PACKED SET_FAST_COM_LENGTH {
@@ -354,14 +338,12 @@ private:
         uint8_t byte_count;
         uint8_t min_esc_id;
         uint8_t esc_count;
-        uint8_t response_length() const { return 1; }
     };
 
 
     class PACKED START_FW {
     public:
         uint8_t msgid { (uint8_t)msg_type::BL_START_FW };
-        uint8_t response_length() const { return 0; }
     };
 
 #if HAL_AP_FETTEC_ESC_BEEP
@@ -374,7 +356,6 @@ private:
         uint8_t beep_frequency;
         // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here  (don't blame me --pb)
         uint16_t spacer = 0;
-        uint8_t response_length() const { return 0; }
     };
 #endif
 
@@ -392,7 +373,6 @@ private:
         uint8_t b;
         // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here  (don't blame me --pb)
         uint16_t spacer = 0;
-        uint8_t response_length() const { return 0; }
     };
 #endif
 
