@@ -839,7 +839,7 @@ void AP_FETtecOneWire::update()
             const float tx_err_rate = calc_tx_crc_error_perc(tlm_from_id, tx_err_count);
             update_rpm(tlm_from_id-_fast_throttle.min_id, centi_erpm*100*2/_pole_count_parameter.get(), tx_err_rate);
 
-            update_telem_data(tlm_from_id-_fast_throttle.min_id, t, AP_ESC_Telem_Backend::TelemetryType::TEMPERATURE|AP_ESC_Telem_Backend::TelemetryType::VOLTAGE|AP_ESC_Telem_Backend::TelemetryType::CURRENT|AP_ESC_Telem_Backend::TelemetryType::CONSUMPTION);
+            update_telem_data(tlm_from_id-_fast_throttle.min_id, t, TelemetryType::TEMPERATURE|TelemetryType::VOLTAGE|TelemetryType::CURRENT|TelemetryType::CONSUMPTION);
         }
 #endif
     }
