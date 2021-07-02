@@ -86,27 +86,26 @@ AP_FETtecOneWire::AP_FETtecOneWire()
 void AP_FETtecOneWire::init()
 {
     if (_uart == nullptr) {
-        AP_SerialManager& serial_manager = AP::serialmanager();
+        const AP_SerialManager& serial_manager = AP::serialmanager();
         _uart = serial_manager.find_serial(AP_SerialManager::SerialProtocol_FETtecOneWire, 0);
-        if (_uart) {
-            _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
-            _uart->set_unbuffered_writes(true);
-            _uart->set_blocking_writes(false);
-#if HAL_AP_FETTEC_HALF_DUPLEX
-            if (_uart->get_options() & _uart->OPTION_HDPLEX) { //Half-Duplex is enabled
-                _use_hdplex = true;
-                _uart->begin(2000000U);
-                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Half-Duplex");
-            } else {
-                _uart->begin(500000U);
-                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Full-Duplex");
-            }
-#else
-            _uart->begin(500000U);
-#endif
-        } else {
+        if (_uart == nullptr) {
             return; // no serial port available, so nothing to do here
         }
+        _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
+        _uart->set_unbuffered_writes(true);
+        _uart->set_blocking_writes(false);
+#if HAL_AP_FETTEC_HALF_DUPLEX
+        if (_uart->get_options() & _uart->OPTION_HDPLEX) { //Half-Duplex is enabled
+            _use_hdplex = true;
+            _uart->begin(2000000U);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Half-Duplex");
+        } else {
+            _uart->begin(500000U);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FTW using Full-Duplex");
+        }
+#else
+        _uart->begin(500000U);
+#endif
     }
 
     if (_scan.state != scan_state_t::DONE) {
