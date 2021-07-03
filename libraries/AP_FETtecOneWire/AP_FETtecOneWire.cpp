@@ -21,6 +21,7 @@
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
+#include <AP_Math/AP_Math.h>
 
 #include "AP_FETtecOneWire.h"
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
@@ -330,11 +331,8 @@ AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const T &cmd, R &res
     if (!_pull_busy) {
         _pull_busy = transmit(cmd);
     } else if (receive((uint8_t*)&response, sizeof(response)) == receive_response::ANSWER_VALID) {
-        if (response.msg.msgid != temp_response.msg.msgid) {
-            // we got a valid packet back - but it wasn't the correct
-            // message type!
-        } else if (temp_response.esc_id != response.esc_id) {
-            // we got a valid packet back - but it wasn't for the correct ESC!
+        if (temp_response.esc_id != response.esc_id) {
+            // we got a valid packet back - but it wasn't from the correct ESC!
         } else {
             response = temp_response;
             _scan.rx_try_cnt = 0;
@@ -435,12 +433,12 @@ void AP_FETtecOneWire::scan_escs()
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
     // ask the ESC type
     case scan_state_t::ESC_TYPE: {
-        PackedMessage<ESC_TYPE> response{uint8_t(_scan.id+1), ESC_TYPE{}};
+        PackedMessage<ESC_TYPE> response{uint8_t(_scan.id+1), ESC_TYPE{0}};
         switch (pull_command(PackedMessage<REQ_TYPE>{uint8_t(_scan.id+1), REQ_TYPE{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            _found_escs[_scan.id].esc_type = response.esc_type;
+            _found_escs[_scan.id].esc_type = response.msg.type;
             _scan.state = scan_state_t::SW_VER;
             break;
         case pull_state::FAILED:
@@ -450,14 +448,14 @@ void AP_FETtecOneWire::scan_escs()
         break;
     }
     // ask the software version
-    case scan_state_t::SW_VER:
+    case scan_state_t::SW_VER: {
         PackedMessage<SW_VER> response{uint8_t(_scan.id+1), SW_VER{0, 0}};
         switch (pull_command(PackedMessage<REQ_SW_VER>{uint8_t(_scan.id+1), REQ_SW_VER{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
-            _found_escs[_scan.id].firmware_version = response.version;
-            _found_escs[_scan.id].firmware_sub_version = response.subversion;
+            _found_escs[_scan.id].firmware_version = response.msg.version;
+            _found_escs[_scan.id].firmware_sub_version = response.msg.subversion;
             _scan.state = scan_state_t::SN;
             break;
         case pull_state::FAILED:
@@ -465,19 +463,20 @@ void AP_FETtecOneWire::scan_escs()
             break;
         }
         break;
+    }
 
     // ask the serial number
     case scan_state_t::SN: {
-        PackedMessage<SN> response{uint8_t(_scan.id+1), SN{}};
+        PackedMessage<SN> response{uint8_t(_scan.id+1), SN{(uint8_t*)"A", 1}};
         switch (pull_command(PackedMessage<REQ_SN>{uint8_t(_scan.id+1), REQ_SN{}}, response)) {
         case pull_state::BUSY:
             break;
         case pull_state::COMPLETED:
             memset(_found_escs[_scan.id].serial_number, '\0', ARRAY_SIZE(_found_escs[_scan.id].serial_number));
             memcpy(_found_escs[_scan.id].serial_number,
-                   response.sn,
+                   response.msg.sn,
                    MIN(ARRAY_SIZE(_found_escs[_scan.id].serial_number),
-                       ARRAY_SIZE(response.sn)));
+                       ARRAY_SIZE(response.msg.sn)));
             _scan.state = scan_state_t::NEXT_ID;
             break;
         case pull_state::FAILED:

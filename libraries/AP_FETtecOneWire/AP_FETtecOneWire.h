@@ -49,6 +49,7 @@
 #include <AP_ESC_Telem/AP_ESC_Telem.h>
 #include <AP_Param/AP_Param.h>
 
+#include <AP_Math/AP_Math.h>
 #include <AP_Math/crc.h>
 
 class AP_FETtecOneWire : public AP_ESC_Telem_Backend
@@ -340,6 +341,35 @@ private:
         uint8_t esc_count;
     };
 
+
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+    class PACKED ESC_TYPE {
+    public:
+        ESC_TYPE(uint8_t _type) :
+            type{_type} { }
+        uint8_t type;
+    };
+
+    class PACKED SW_VER {
+    public:
+        SW_VER(uint8_t _version, uint8_t _subversion) :
+            version{_version},
+            subversion{_subversion}
+            { }
+        uint8_t version;
+        uint8_t subversion;
+    };
+
+    class PACKED SN {
+    public:
+        SN(uint8_t *_sn, uint8_t snlen) {
+            memset(sn, 0, ARRAY_SIZE(sn));
+            memcpy(sn, _sn, MIN(ARRAY_SIZE(sn), snlen));
+        }
+        uint8_t sn[12];
+    };
+
+#endif
 
     class PACKED START_FW {
     public:
