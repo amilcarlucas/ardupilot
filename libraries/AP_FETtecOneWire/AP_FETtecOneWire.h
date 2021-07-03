@@ -31,17 +31,17 @@
 
 // Get static info from the ESCs (optional feature)
 #ifndef HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-#define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 0
+#define HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO 1
 #endif
 
 // provide beep support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_BEEP
-#define HAL_AP_FETTEC_ESC_BEEP 0
+#define HAL_AP_FETTEC_ESC_BEEP 1
 #endif
 
 // provide light support (optional feature)
 #ifndef HAL_AP_FETTEC_ESC_LIGHT
-#define HAL_AP_FETTEC_ESC_LIGHT 0
+#define HAL_AP_FETTEC_ESC_LIGHT 1
 #endif
 
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
