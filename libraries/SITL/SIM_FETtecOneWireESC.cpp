@@ -250,24 +250,29 @@ void FETtecOneWireESC::handle_fast_esc_data()
     const uint8_t telem_request = u.buffer[0] >> 4;
 
     // ::fprintf(stderr, "telem_request=%u\n", (unsigned)telem_request);
-    escs[0].pwm = ((u.buffer[0] >> 3) & 0x1) << 10;
+    uint16_t esc0_pwm;
+    esc0_pwm = ((u.buffer[0] >> 3) & 0x1) << 10;
     if ((u.buffer[0] & 0b111) != 0x1) {
         AP_HAL::panic("expected fast-throttle command");
     }
 
     // decode second byte
-    escs[0].pwm |= (u.buffer[1] >> 5) << 7;
+    esc0_pwm |= (u.buffer[1] >> 5) << 7;
     if ((u.buffer[1] & 0b00011111) != 0x1f) {
         AP_HAL::panic("Unexpected 5-bit target id");
     }
 
     // decode enough of third byte to complete pwm[0]
-    escs[0].pwm |= u.buffer[2] >> 1;
+    esc0_pwm |= u.buffer[2] >> 1;
 
-    if (telem_request == escs[0].id) {
-        escs[0].telem_request = true;
-    }
+    if (escs[0].state == ESC::State::RUNNING) {
+        escs[0].pwm = esc0_pwm;
+
+        if (telem_request == escs[0].id) {
+            escs[0].telem_request = true;
+        }
         ::fprintf(stderr, "pwm[%u] out: %u\n", 0, (unsigned)escs[0].pwm);
+    }
 
     // decode remainder of ESC values
     // slides a window across the input buffer, extracting 11-bit ESC values
@@ -275,14 +280,16 @@ void FETtecOneWireESC::handle_fast_esc_data()
     uint8_t byte_ofs = 2;
     uint8_t bit_ofs = 7;
     for (uint8_t i=1; i<id_count; i++) {
-        if (telem_request == escs[i].id) {
-            escs[i].telem_request = true;
-        }
         const uint16_t window = u.buffer[byte_ofs]<<8|u.buffer[byte_ofs+1];
         // zero top bits in window by shifting left then right
         const uint16_t tmp = uint16_t(window << bit_ofs);
-        escs[i].pwm = tmp >> 5;
-        ::fprintf(stderr, "pwm[%u] out: %u\n", i, (unsigned)escs[i].pwm);
+        if (escs[i].state == ESC::State::RUNNING) {
+            if (telem_request == escs[i].id) {
+                escs[i].telem_request = true;
+            }
+            escs[i].pwm = tmp >> 5;
+            ::fprintf(stderr, "pwm[%u] out: %u\n", i, (unsigned)escs[i].pwm);
+        }
         bit_ofs += 11;
         while (bit_ofs > 7) {
             byte_ofs++;
