@@ -334,7 +334,6 @@ AP_FETtecOneWire::pull_state AP_FETtecOneWire::pull_command(const T &cmd, R &res
         if (temp_response.esc_id != response.esc_id) {
             // we got a valid packet back - but it wasn't from the correct ESC!
         } else {
-            response = temp_response;
             _scan.rx_try_cnt = 0;
             _scan.trans_try_cnt = 0;
             _pull_busy = false;
