@@ -63,6 +63,8 @@ public:
 
     static const struct AP_Param::GroupInfo var_info[];
 
+    bool pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const;
+
     /// periodically called from SRV_Channels::push()
     void update();
     static AP_FETtecOneWire *get_singleton() {
