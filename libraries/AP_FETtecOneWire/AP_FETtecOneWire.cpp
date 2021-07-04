@@ -741,6 +741,15 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
     }
 }
 
+bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const
+{
+    if (!_initialised) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "Not initialised");
+        return false;
+    }
+    return true;
+}
+
 /// periodically called from SRV_Channels::push()
 void AP_FETtecOneWire::update()
 {
