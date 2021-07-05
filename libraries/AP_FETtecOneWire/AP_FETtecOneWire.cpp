@@ -113,9 +113,9 @@ void AP_FETtecOneWire::init()
 
     // we have a uart, allocate some memory:
     _esc_count = __builtin_popcount(_motor_mask_parameter);
-    // OneWire supports at most 15 ESCs, because of the 4 bit
-    // limitation below.  But we are still limited to the number of
-    // ESCs the telem library will collect data for.
+    // OneWire supports at most 15 ESCs, because of the 4 bit limitation
+    // on the fast-trottle command.  But we are still limited to the
+    // number of ESCs the telem library will collect data for.
     if (_esc_count == 0 || _esc_count > MIN(15, ESC_TELEM_MAX_ESCS)) {
         _invalid_mask = true;
         return;
@@ -189,7 +189,7 @@ bool AP_FETtecOneWire::transmit(const uint8_t* bytes, uint8_t length)
     transmits a config request to ESCs
     @param bytes  bytes to transmit
     @param length number of bytes to transmit
-    @return false there's no space in the UART for this message or if transmit(bytes, length) would return false
+    @return false if vehicle is armed or if transmit(bytes, length) would return false
 */
 bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, uint8_t length)
 {
@@ -609,7 +609,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 #endif
 
     uint8_t fast_throttle_command[fast_throttle_byte_count];
-    pack_fast_throttle_command(motor_values, fast_throttle_command2, sizeof(fast_throttle_command2), esc_id_to_request_telem_from);
+    pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), esc_id_to_request_telem_from);
 
     transmit(fast_throttle_command, sizeof(fast_throttle_command));
 }

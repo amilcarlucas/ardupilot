@@ -125,7 +125,7 @@ private:
     void init_uart();
 
     /**
-        check if the current configuration is OK
+        configure ESCs
     */
     void configure_escs();
 
@@ -160,8 +160,8 @@ private:
     class ESC {
     public:
 
-        uint8_t id;  // FETtec ESC ID
-        uint8_t servo_ofs;  // offset into ArduPilot servo array
+        uint8_t id;         ///< FETtec ESC ID
+        uint8_t servo_ofs;  ///< offset into ArduPilot servo array
         void set_state(ESCState _state) {
             fet_debug("Moving ESC.id=%u from state=%u to state=%u\n", (unsigned)id, (unsigned)state, (unsigned)_state);
             state = _state;
@@ -171,7 +171,6 @@ private:
 
 #if HAL_WITH_ESC_TELEM
         uint16_t error_count;                ///< error counter from the ESCs.
-        // uint16_t error_count_since_overflow; ///< error counter from the ESCs to pass the overflow.
         uint32_t last_telem_us;
         bool telem_expected;
 #endif
@@ -185,7 +184,7 @@ private:
 
     ESC *_escs;
     uint8_t _esc_count;  // number of allocated ESCs
-    uint8_t fast_throttle_byte_count;  // pre-calculated number of bytes required to send an entire packed TLM message
+    uint8_t fast_throttle_byte_count;  // pre-calculated number of bytes required to send an entire packed throttle message
 
 #if HAL_AP_FETTEC_HALF_DUPLEX
     uint8_t _last_crc;       ///< the CRC from the last sent fast-throttle command
@@ -193,9 +192,9 @@ private:
 #endif
 
     enum class FrameSource : uint8_t {
-        MASTER = 0x01,
+        MASTER     = 0x01,
         BOOTLOADER = 0x02,
-        ESC = 0x03,
+        ESC        = 0x03,
     };
 
     enum class MsgType : uint8_t
@@ -215,9 +214,8 @@ private:
 #endif
         SET_FAST_COM_LENGTH = 26, ///< configure fast-throttle command
         SET_TLM_TYPE        = 27, ///< telemetry operation mode
-        SIZEOF_RESPONSE_LENGTH,   ///< size of the _response_length array used in the pull_command() function, you can move this one around
 #if HAL_AP_FETTEC_ESC_LIGHT
-        SET_LED_TMP_COLOR   = 51, ///< MsgType::SET_LED_TMP_COLOR is ignored here. You must update this if you add new MsgType cases
+        SET_LED_TMP_COLOR   = 51, ///< set ESC's LED color
 #endif
     };
 
@@ -239,10 +237,10 @@ private:
         {
             update_checksum();
         }
-        uint8_t frame_source { 0x01 };  // (master is always 0x01
+        uint8_t frame_source { 0x01 };  // master is always 0x01
         uint8_t esc_id;
         uint16_t frame_type { 0 };  // bootloader only, always zero
-        uint8_t frame_length {sizeof(T) + 6};  // all bytes inc frame_source and checksum
+        uint8_t frame_length {sizeof(T) + FRAME_OVERHEAD};  // all bytes including frame_source and checksum
         T msg;
         uint8_t checksum;
 
@@ -328,7 +326,7 @@ private:
 
     uint16_t _sent_msg_count;     ///< number of fast-throttle commands sent by the flight controller
 
-    // the ESC at this offset into _escs should be he next to send a
+    // the ESC at this offset into _escs should be the next to send a
     // telemetry request for:
     uint8_t esc_ofs_to_request_telem_from;
 
@@ -351,10 +349,10 @@ private:
             consumption_mah{_consumption_mah},
             tx_err_count{_tx_err_count}
         { }
-        int8_t temp;  // centidegrees
+        int8_t temp;       // centidegrees
         uint16_t voltage;  // centivolts
         uint16_t current;  // centiamps  (signed?)
-        int16_t rpm;  // centi-rpm
+        int16_t rpm;       // centi-rpm
         uint16_t consumption_mah;  // ???
         uint16_t tx_err_count;
     };
@@ -404,6 +402,13 @@ private:
         @return false there's no space in the UART for this message
     */
     bool transmit(const uint8_t* bytes, uint8_t length);
+
+    /**
+        transmits configuration request data to ESCs
+        @param bytes  bytes to transmit
+        @param length number of bytes to transmit
+        @return false if vehicle armed or there's no space in the UART for this message
+    */
     bool transmit_config_request(const uint8_t* bytes, uint8_t length);
 
     template <typename T>
@@ -420,8 +425,7 @@ private:
 
     /**
         sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
-        @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
-        @param tlm_request the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
+        @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
     */
     void escs_set_values(const uint16_t *motor_values);
 
