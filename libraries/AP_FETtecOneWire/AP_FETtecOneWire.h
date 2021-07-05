@@ -323,7 +323,7 @@ private:
 
 #endif
 
-    void pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *buffer, uint8_t length, uint8_t esc_id_to_request_telem_from);
+    void pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *buffer, const uint8_t length, const uint8_t esc_id_to_request_telem_from);
 
 /*
  * Messages, methods and states for dealing with ESC telemetry
@@ -407,7 +407,7 @@ private:
         @param length number of bytes to transmit
         @return false there's no space in the UART for this message
     */
-    bool transmit(const uint8_t* bytes, uint8_t length);
+    bool transmit(const uint8_t* bytes, const uint8_t length);
 
     template <typename T>
     bool transmit(const PackedMessage<T> &msg) {
@@ -420,7 +420,7 @@ private:
         @param length number of bytes to transmit
         @return false if vehicle armed or there's no space in the UART for this message
     */
-    bool transmit_config_request(const uint8_t* bytes, uint8_t length);
+    bool transmit_config_request(const uint8_t* bytes, const uint8_t length);
 
     template <typename T>
     bool transmit_config_request(const PackedMessage<T> &msg) {
@@ -445,7 +445,7 @@ private:
     // is a bit of a puzzle.
     static const uint32_t max_telem_interval_us = 100000;
 
-    void handle_message(ESC &esc, uint8_t length);
+    void handle_message(ESC &esc, const uint8_t length);
 
     /**
         reads data from the UART, calling handle_message on any message found
@@ -470,12 +470,12 @@ private:
     uint8_t _receive_buf_used;
 
     /// shifts data to start of buffer based on magic header bytes
-    void move_frame_source_in_receive_buffer(uint8_t search_start_pos = 0);
+    void move_frame_source_in_receive_buffer(const uint8_t search_start_pos = 0);
 
     /// cut n bytes from start of buffer
-    void consume_bytes(uint8_t n);
+    void consume_bytes(const uint8_t n);
 
     /// returns true if the first message in the buffer is OK
-    bool buffer_contains_ok(uint8_t length);
+    bool buffer_contains_ok(const uint8_t length);
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED

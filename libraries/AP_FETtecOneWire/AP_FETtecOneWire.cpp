@@ -179,7 +179,7 @@ void AP_FETtecOneWire::init()
     @param length number of bytes to transmit
     @return false there's no space in the UART for this message
 */
-bool AP_FETtecOneWire::transmit(const uint8_t* bytes, uint8_t length)
+bool AP_FETtecOneWire::transmit(const uint8_t* bytes, const uint8_t length)
 {
     if (length > _uart->txspace()) {
         return false;
@@ -200,7 +200,7 @@ bool AP_FETtecOneWire::transmit(const uint8_t* bytes, uint8_t length)
     @param length number of bytes to transmit
     @return false if vehicle is armed or if transmit(bytes, length) would return false
 */
-bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, uint8_t length)
+bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, const uint8_t length)
 {
     if (hal.util->get_soft_armed()) {
         return false;
@@ -209,7 +209,7 @@ bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, uint8_t len
 }
 
 /// shifts data to start of buffer based on magic header bytes
-void AP_FETtecOneWire::move_frame_source_in_receive_buffer(uint8_t search_start_pos)
+void AP_FETtecOneWire::move_frame_source_in_receive_buffer(const uint8_t search_start_pos)
 {
     uint8_t i;
     for (i=search_start_pos; i<_receive_buf_used; i++) {
@@ -223,7 +223,7 @@ void AP_FETtecOneWire::move_frame_source_in_receive_buffer(uint8_t search_start_
 }
 
 /// cut n bytes from start of buffer
-void AP_FETtecOneWire::consume_bytes(uint8_t n)
+void AP_FETtecOneWire::consume_bytes(const uint8_t n)
 {
     if (n == 0) {
         return;
@@ -233,7 +233,7 @@ void AP_FETtecOneWire::consume_bytes(uint8_t n)
 }
 
 /// returns true if the first message in the buffer is OK
-bool AP_FETtecOneWire::buffer_contains_ok(uint8_t length)
+bool AP_FETtecOneWire::buffer_contains_ok(const uint8_t length)
 {
     if (length != sizeof(u.packed_ok)) {
         _message_invalid_in_state_count++;
@@ -245,7 +245,7 @@ bool AP_FETtecOneWire::buffer_contains_ok(uint8_t length)
     return true;
 }
 
-void AP_FETtecOneWire::handle_message(ESC &esc, uint8_t length)
+void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
 {
     // only accept messages from the bootloader when we could
     // legitimately get a message from the bootloader.  Swipes the OK
@@ -505,7 +505,7 @@ void AP_FETtecOneWire::read_data_from_uart()
     @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
     @param esc_id_to_request_telem_from the ESC to request telemetry from
 */
-void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *fast_throttle_command, uint8_t length, uint8_t esc_id_to_request_telem_from)
+void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *fast_throttle_command, const uint8_t length, const uint8_t esc_id_to_request_telem_from)
 {
     // byte 1:
     // bit 0,1,2,3 = ESC ID, Bit 4 = MSB bit of first ESC (11bit) throttle value, bit 5,6,7 = frame header
