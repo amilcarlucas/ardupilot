@@ -729,7 +729,7 @@ void AP_FETtecOneWire::update()
     }
 
     // get ESC set points
-    uint16_t motor_pwm[_esc_count] {};
+    uint16_t motor_pwm[_esc_count];
     bool some_not_running = false;
     for (uint8_t i = 0; i < _esc_count; i++) {
         const ESC &esc = _escs[i];
