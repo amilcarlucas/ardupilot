@@ -79,8 +79,8 @@ public:
     /// periodically called from SRV_Channels::push()
     void update();
 
-    // called from AP_Arming; should return false if arming should be
-    // disallowed
+    /// called from AP_Arming; should return false if arming should be
+    /// disallowed
     bool pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const;
 
 #if HAL_AP_FETTEC_ESC_BEEP
@@ -105,10 +105,6 @@ private:
     static AP_FETtecOneWire *_singleton;
     AP_HAL::UARTDriver *_uart;
 
-    bool _init_done;       ///< device driver is initialized; ESCs may still need to be configured
-
-    bool _invalid_mask;  // true if the mask parameter is invalid
-
     AP_Int32 _motor_mask_parameter;
     AP_Int32 _reverse_mask_parameter;
 #if HAL_WITH_ESC_TELEM
@@ -119,13 +115,17 @@ private:
     static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
 
     /**
-        initialize the serial port, scan the OneWire bus, setup the found ESCs
+        initialize the device driver: configure serial port, wake-up and configure ESCs
     */
     void init();
+
+    /**
+        initialize the serial port
+    */
     void init_uart();
 
     /**
-        configure ESCs
+        scan the OneWire bus, configure the ESCs requested in the _motor_mask_parameter
     */
     void configure_escs();
 
@@ -139,7 +139,7 @@ private:
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         WANT_SEND_REQ_TYPE = 30,
-        WAITING_ESC_TYPE = 3,
+        WAITING_ESC_TYPE = 31,
 
         WANT_SEND_REQ_SW_VER = 40,
         WAITING_SW_VER = 41,
@@ -148,8 +148,10 @@ private:
         WAITING_SN = 51,
 #endif
 
+#if HAL_WITH_ESC_TELEM
         WANT_SEND_SET_TLM_TYPE = 60,
         WAITING_SET_TLM_TYPE_OK = 61,
+#endif
 
         WANT_SEND_SET_FAST_COM_LENGTH = 70,
         WAITING_SET_FAST_COM_LENGTH_OK = 71,
@@ -160,37 +162,41 @@ private:
     class ESC {
     public:
 
+#if HAL_WITH_ESC_TELEM
+        uint32_t last_telem_us;              ///< last time we got telemetry from this ESC
+        uint16_t error_count;                ///< error counter from the ESCs.
+        bool telem_expected;                 ///< this ESC is fully configured and is now expected to send us telemetry
+#endif
+
         uint8_t id;         ///< FETtec ESC ID
         uint8_t servo_ofs;  ///< offset into ArduPilot servo array
         void set_state(ESCState _state) {
             fet_debug("Moving ESC.id=%u from state=%u to state=%u\n", (unsigned)id, (unsigned)state, (unsigned)_state);
             state = _state;
         };
-
         ESCState state = ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE;
 
-#if HAL_WITH_ESC_TELEM
-        uint16_t error_count;                ///< error counter from the ESCs.
-        uint32_t last_telem_us;
-        bool telem_expected;
-#endif
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+        uint8_t serial_number[12];
         uint8_t firmware_version;
         uint8_t firmware_subversion;
         uint8_t type;
-        uint8_t serial_number[12];
 #endif
     };
 
+    uint32_t _last_not_running_warning_ms;  ///< last time we warned the user their ESCs are stuffed
     ESC *_escs;
-    uint8_t _esc_count;  // number of allocated ESCs
-    uint8_t fast_throttle_byte_count;  // pre-calculated number of bytes required to send an entire packed throttle message
+    uint8_t _esc_count;                ///< number of allocated ESCs
+    uint8_t _fast_throttle_byte_count; ///< pre-calculated number of bytes required to send an entire packed throttle message
 
 #if HAL_AP_FETTEC_HALF_DUPLEX
     uint8_t _ignore_own_bytes; ///< bytes to ignore while receiving, because we have transmitted them ourselves
-    uint8_t _last_crc;       ///< the CRC from the last sent fast-throttle command
-    bool _use_hdplex;        ///< use asynchronous half-duplex serial communication
+    uint8_t _last_crc;         ///< the CRC from the last sent fast-throttle command
+    bool _use_hdplex;          ///< use asynchronous half-duplex serial communication
 #endif
+
+    bool _init_done;     ///< device driver is initialized; ESCs may still need to be configured
+    bool _invalid_mask;  ///< true if the mask parameter is invalid
 
     enum class FrameSource : uint8_t {
         MASTER     = 0x01,
@@ -220,7 +226,7 @@ private:
 #endif
     };
 
-    /*
+    /**
     a frame looks like:
     byte 1 = frame header (master is always 0x01)
     byte 2 = target ID (5bit)
@@ -325,11 +331,12 @@ private:
 #if HAL_WITH_ESC_TELEM
     void handle_message_telem(ESC &esc);
 
-    uint16_t _sent_msg_count;     ///< number of fast-throttle commands sent by the flight controller
+    uint32_t _last_fast_throttle_cmd_count_reset_ms;
+    uint16_t _fast_throttle_cmd_count;     ///< number of fast-throttle commands sent by the flight controller
 
-    // the ESC at this offset into _escs should be the next to send a
-    // telemetry request for:
-    uint8_t esc_ofs_to_request_telem_from;
+    /// the ESC at this offset into _escs should be the next to send a
+    /// telemetry request for:
+    uint8_t _esc_ofs_to_request_telem_from;
 
     class PACKED SET_TLM_TYPE {
     public:
@@ -350,15 +357,13 @@ private:
             consumption_mah{_consumption_mah},
             tx_err_count{_tx_err_count}
         { }
-        int8_t temp;       // centidegrees
-        uint16_t voltage;  // centivolts
-        uint16_t current;  // centiamps  (signed?)
-        int16_t rpm;       // centi-rpm
-        uint16_t consumption_mah;  // ???
-        uint16_t tx_err_count;
+        int8_t temp;              // centi-degrees
+        uint16_t voltage;         // centi-Volt
+        uint16_t current;         // centi-Ampere  (signed?)
+        int16_t rpm;              // centi-rpm
+        uint16_t consumption_mah; // mili-Ampere.hour
+        uint16_t tx_err_count;    // CRC error count, as perceived from the ESC receiving side
     };
-
-    uint32_t _last_not_running_warning_ms;  // last time we warned the user their ESCs are stuffed
 
 #endif
 
@@ -404,6 +409,11 @@ private:
     */
     bool transmit(const uint8_t* bytes, uint8_t length);
 
+    template <typename T>
+    bool transmit(const PackedMessage<T> &msg) {
+        return transmit((const uint8_t*)&msg, sizeof(msg));
+    }
+
     /**
         transmits configuration request data to ESCs
         @param bytes  bytes to transmit
@@ -413,24 +423,15 @@ private:
     bool transmit_config_request(const uint8_t* bytes, uint8_t length);
 
     template <typename T>
-    bool transmit(const PackedMessage<T> &msg) {
-        _sent_msg_count++;
-        return transmit((const uint8_t*)&msg, sizeof(msg));
-    }
-
-    template <typename T>
     bool transmit_config_request(const PackedMessage<T> &msg) {
-        _sent_msg_count++;
         return transmit_config_request((const uint8_t*)&msg, sizeof(msg));
     }
 
     /**
-        sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
+        sends a single fast-throttle frame containing the throttle for all configured OneWire ESCs.
         @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 999-0 reversed rotation
     */
     void escs_set_values(const uint16_t *motor_values);
-
-    uint32_t last_sent_msg_count_reset_ms;
 
     /*
      * Methods and data for receiving data from the ESCs:
@@ -447,10 +448,7 @@ private:
     void handle_message(ESC &esc, uint8_t length);
 
     /**
-        reads the FETtec OneWire answer frame of an ESC
-        @param bytes 8 bit byte array, where the received answer gets stored in
-        @param length bytes available in bytes
-        @return receive_response enum
+        reads data from the UART, calling handle_message on any message found
     */
     void read_data_from_uart();
     union MessageUnion {
@@ -466,13 +464,18 @@ private:
 #endif
         uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
     } u;
-    uint8_t receive_buf_used;
-    void move_frame_source_in_receive_buffer(uint8_t search_start_pos = 0);
-    void consume_bytes(uint8_t n);
-
-    bool buffer_contains_ok(uint8_t length);
 
     uint16_t _unknown_esc_message;
     uint16_t _message_invalid_in_state_count;
+    uint8_t _receive_buf_used;
+
+    /// shifts data to start of buffer based on magic header bytes
+    void move_frame_source_in_receive_buffer(uint8_t search_start_pos = 0);
+
+    /// cut n bytes from start of buffer
+    void consume_bytes(uint8_t n);
+
+    /// returns true if the first message in the buffer is OK
+    bool buffer_contains_ok(uint8_t length);
 };
 #endif // HAL_AP_FETTEC_ONEWIRE_ENABLED

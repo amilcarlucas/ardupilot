@@ -17,7 +17,6 @@
 /* Strongly modified by Amilcar Lucas, IAV GmbH */
 
 #include <AP_Math/AP_Math.h>
-#include <AP_Scheduler/AP_Scheduler.h>
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
@@ -73,7 +72,7 @@ AP_FETtecOneWire::AP_FETtecOneWire()
 }
 
 /**
-  initialize the serial port, scan the bus, setup the found ESCs
+  initialize the serial port
 
 */
 void AP_FETtecOneWire::init_uart()
@@ -104,11 +103,12 @@ void AP_FETtecOneWire::init_uart()
     _uart->begin(uart_baud);
 }
 
+/// initialize the device driver: configure serial port, wake-up and configure ESCs
 void AP_FETtecOneWire::init()
 {
     init_uart();
     if (_uart == nullptr) {
-        return;
+        return; // no serial port available, so nothing to do here
     }
 
     // we have a uart, allocate some memory:
@@ -116,7 +116,11 @@ void AP_FETtecOneWire::init()
     // OneWire supports at most 15 ESCs, because of the 4 bit limitation
     // on the fast-trottle command.  But we are still limited to the
     // number of ESCs the telem library will collect data for.
+#if HAL_WITH_ESC_TELEM
     if (_esc_count == 0 || _esc_count > MIN(15, ESC_TELEM_MAX_ESCS)) {
+#else
+    if (_esc_count == 0 || _esc_count > NUM_SERVO_CHANNELS) {
+#endif
         _invalid_mask = true;
         return;
     }
@@ -159,7 +163,7 @@ void AP_FETtecOneWire::init()
     // 8  bits - frame CRC
     const uint16_t bit_count = 8 + 4 + (_esc_count * 11) + 8;
     // 7  dummy for rounding up the division by 8
-    fast_throttle_byte_count = (bit_count + 7)/8;
+    _fast_throttle_byte_count = (bit_count + 7)/8;
 #endif
 
     // tell SRV_Channels about ESC capabilities
@@ -204,11 +208,11 @@ bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, uint8_t len
     return transmit(bytes, length);;
 }
 
-// shifts data to start of buffer based on magic header bytes
+/// shifts data to start of buffer based on magic header bytes
 void AP_FETtecOneWire::move_frame_source_in_receive_buffer(uint8_t search_start_pos)
 {
     uint8_t i;
-    for (i=search_start_pos; i<receive_buf_used; i++) {
+    for (i=search_start_pos; i<_receive_buf_used; i++) {
         // FIXME: full-duplex should add MASTER here as we see our own data
         if ((FrameSource)u.receive_buf[i] == FrameSource::BOOTLOADER ||
             (FrameSource)u.receive_buf[i] == FrameSource::ESC) {
@@ -218,17 +222,17 @@ void AP_FETtecOneWire::move_frame_source_in_receive_buffer(uint8_t search_start_
     consume_bytes(i);
 }
 
-// cut n bytes from start of buffer
+/// cut n bytes from start of buffer
 void AP_FETtecOneWire::consume_bytes(uint8_t n)
 {
     if (n == 0) {
         return;
     }
-    memmove(u.receive_buf, &u.receive_buf[n], receive_buf_used-n);
-    receive_buf_used = receive_buf_used - n;
+    memmove(u.receive_buf, &u.receive_buf[n], _receive_buf_used-n);
+    _receive_buf_used = _receive_buf_used - n;
 }
 
-// returns true if the first message in the buffer is OK
+/// returns true if the first message in the buffer is OK
 bool AP_FETtecOneWire::buffer_contains_ok(uint8_t length)
 {
     if (length != sizeof(u.packed_ok)) {
@@ -273,7 +277,11 @@ void AP_FETtecOneWire::handle_message(ESC &esc, uint8_t length)
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
             esc.set_state(ESCState::WANT_SEND_REQ_TYPE);
 #else
+#if HAL_WITH_ESC_TELEM
             esc.set_state(ESCState::WANT_SEND_SET_TLM_TYPE);
+#else
+            esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
+#endif
 #endif
             break;
         }
@@ -286,7 +294,11 @@ void AP_FETtecOneWire::handle_message(ESC &esc, uint8_t length)
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
             esc.set_state(ESCState::WANT_SEND_REQ_TYPE);
 #else
+#if HAL_WITH_ESC_TELEM
             esc.set_state(ESCState::WANT_SEND_SET_TLM_TYPE);
+#else
+            esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
+#endif
 #endif
         }
         break;
@@ -324,10 +336,15 @@ void AP_FETtecOneWire::handle_message(ESC &esc, uint8_t length)
         }
         memset(esc.serial_number, '\0', ARRAY_SIZE(esc.serial_number));
         memcpy(esc.serial_number, u.packed_sn.msg.sn, MIN(ARRAY_SIZE(esc.serial_number), ARRAY_SIZE(u.packed_sn.msg.sn)));
+#if HAL_WITH_ESC_TELEM
         esc.set_state(ESCState::WANT_SEND_SET_TLM_TYPE);
+#else
+        esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
+#endif
         break;
 #endif
 
+#if HAL_WITH_ESC_TELEM
     case ESCState::WANT_SEND_SET_TLM_TYPE:
         return;
     case ESCState::WAITING_SET_TLM_TYPE_OK:
@@ -335,6 +352,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, uint8_t length)
             esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
         }
         break;
+#endif
 
     case ESCState::WANT_SEND_SET_FAST_COM_LENGTH:
         return;
@@ -372,8 +390,8 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
 
     // update rpm and error rate
     float error_rate_pct = 0;
-    if (_sent_msg_count) {
-        error_rate_pct = esc.error_count/(float)_sent_msg_count;
+    if (_fast_throttle_cmd_count) {
+        error_rate_pct = esc.error_count/(float)_fast_throttle_cmd_count;
     }
     update_rpm(esc.servo_ofs,
                tlm.rpm*100*2/_pole_count_parameter,
@@ -427,16 +445,16 @@ void AP_FETtecOneWire::read_data_from_uart()
         last_bytes_to_read = bytes_to_read;
 
         // read as much from the uart as we can:
-        const uint8_t space = ARRAY_SIZE(u.receive_buf) - receive_buf_used;
-        const uint32_t nbytes = _uart->read(&u.receive_buf[receive_buf_used], space);
-        receive_buf_used += nbytes;
+        const uint8_t space = ARRAY_SIZE(u.receive_buf) - _receive_buf_used;
+        const uint32_t nbytes = _uart->read(&u.receive_buf[_receive_buf_used], space);
+        _receive_buf_used += nbytes;
         bytes_to_read -= nbytes;
 
         move_frame_source_in_receive_buffer();
 
         // borrow the "OK" message to retrieve the frame length from the buffer:
         const uint8_t frame_length = u.packed_ok.frame_length;
-        if (receive_buf_used < frame_length) {
+        if (_receive_buf_used < frame_length) {
             continue;
         }
 
@@ -483,76 +501,10 @@ void AP_FETtecOneWire::read_data_from_uart()
 }
 
 /**
-    if init is complete sends a single fast-throttle frame containing the throttle for all found OneWire ESCs.
+    packs a single fast-throttle frame containing the throttle for all configured OneWire ESCs.
     @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
-    @param tlm_request the ESC to request telemetry from (-1 for no telemetry, 0 for ESC1, 1 for ESC2, 2 for ESC3, ...)
+    @param esc_id_to_request_telem_from the ESC to request telemetry from
 */
-// void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *fast_throttle_command, uint8_t length, uint8_t esc_id_to_request_telem_from)
-// {
-// //     uint8_t esc_id_to_request_telem_from = 0;
-// // #if HAL_WITH_ESC_TELEM
-// //     ESC &esc_to_req_telem_from = _escs[esc_ofs_to_request_telem_from++];
-// //     if (esc_ofs_to_request_telem_from >= _esc_count) {
-// //         esc_ofs_to_request_telem_from = 0;
-// //     }
-// //     esc_to_req_telem_from.telem_expected = true;
-// //     esc_id_to_request_telem_from = esc_to_req_telem_from.id;
-// // #endif
-
-//     // byte 1:
-//     // bit 0,1,2,3 = ESC ID, Bit 4 = MSB bit of first ESC (11bit) throttle value, bit 5,6,7 = frame header
-//     // so AAAABCCC
-//     // A = ID from the ESC telemetry is requested from. ESC ID == 0 means no request.
-//     // B = MSB from first throttle value
-//     // C = frame header
-//     fast_throttle_command[0] = esc_id_to_request_telem_from << 4; // 0 here means no telemetry request
-//     fast_throttle_command[0] |= ((motor_values[0] >> 10) & 0x01) << 3;
-//     fast_throttle_command[0] |= 0x01;  // FrameSource::MASTER
-
-//     // byte 2:
-//     // AAABBBBB
-//     // A = next 3 bits from (11bit) throttle value
-//     // B = 5bit target ID
-//     fast_throttle_command[1] = (((motor_values[0] >> 7) & 0x07)) << 5;
-//     fast_throttle_command[1] |= 0x1F;      // All IDs
-
-//     // following bytes are the rest 7 bit of the first (11bit) throttle value,
-//     // and all bits from all other throttle values, followed by the CRC byte
-//     uint8_t packet_byte_offset = 2;
-//     uint8_t bit_offset_in_packet_byte = 0;
-//     for (uint8_t mot=0; mot<_esc_count; mot++) {
-//         const uint16_t pwm = motor_values[mot];
-//         uint8_t bits_remaining_in_pwm = 11;
-//         if (mot == 0) {
-//             bits_remaining_in_pwm = 7;
-//         }
-//         while (bits_remaining_in_pwm) {
-//             // the number of bits we can copy is constrained by the
-//             // number of bits remaining to be filled in the target
-//             // byte in the packet and the number of bits we haven't
-//             // copied already
-//             const uint8_t num_bits_to_copy = MIN(8-bit_offset_in_packet_byte, bits_remaining_in_pwm);
-//             // mask here is calculated by creating the correct number
-//             // of set bits and then shifting it so it covers the bits
-//             // in the PWM mask
-//             const uint16_t source_mask = (((1U<<num_bits_to_copy)-1) << (bits_remaining_in_pwm-num_bits_to_copy));
-//             // get source bits into the lower bits of a uint8_t:
-//             const uint8_t source_bits = (pwm & source_mask) >> (bits_remaining_in_pwm-num_bits_to_copy);
-//             /// add them to the fast-throttle packet:
-//             fast_throttle_command[packet_byte_offset] |= source_bits << (8-bit_offset_in_packet_byte);
-//             bit_offset_in_packet_byte += num_bits_to_copy;
-//             if (bit_offset_in_packet_byte == 8) {
-//                 bit_offset_in_packet_byte = 0;
-//                 packet_byte_offset++;
-//             }
-//             bits_remaining_in_pwm -= num_bits_to_copy;
-//         }
-//     }
-
-//     fast_throttle_command[sizeof(fast_throttle_command)-1] =
-//         crc8_dvb_update(0, fast_throttle_command, sizeof(fast_throttle_command)-1);
-// }
-
 void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *fast_throttle_command, uint8_t length, uint8_t esc_id_to_request_telem_from)
 {
     // byte 1:
@@ -606,26 +558,25 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
     // _last_crc = fast_throttle_command[_fast_throttle.byte_count - 1];
 #endif
 
-    // send throttle commands to all configured ESCs in a single packet transfer
-    _sent_msg_count++;
-
     uint8_t esc_id_to_request_telem_from = 0;
 #if HAL_WITH_ESC_TELEM
-    ESC &esc_to_req_telem_from = _escs[esc_ofs_to_request_telem_from++];
-    if (esc_ofs_to_request_telem_from >= _esc_count) {
-        esc_ofs_to_request_telem_from = 0;
+    ESC &esc_to_req_telem_from = _escs[_esc_ofs_to_request_telem_from++];
+    if (_esc_ofs_to_request_telem_from >= _esc_count) {
+        _esc_ofs_to_request_telem_from = 0;
     }
     esc_to_req_telem_from.telem_expected = true;
     esc_id_to_request_telem_from = esc_to_req_telem_from.id;
+    _fast_throttle_cmd_count++;
 #endif
 
-    uint8_t fast_throttle_command[fast_throttle_byte_count];
+    uint8_t fast_throttle_command[_fast_throttle_byte_count];
     pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), esc_id_to_request_telem_from);
 
     // No command was yet sent, so no reply is expected and all information
     // on the receive buffer is either garbage or noise. Discard it
     _uart->discard_input();
 
+    // send throttle commands to all configured ESCs in a single packet transfer
     transmit(fast_throttle_command, sizeof(fast_throttle_command));
 }
 
@@ -644,11 +595,11 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
         hal.util->snprintf(failure_msg, failure_msg_len, "Invalid pole count %u", _pole_count_parameter);
         return false;
     }
+    uint8_t no_telem = 0;
+    const uint64_t now64 = AP_HAL::micros64();
 #endif
 
     uint8_t not_running = 0;
-    uint8_t no_telem = 0;
-    const uint64_t now64 = AP_HAL::micros64();
     for (uint8_t i=0; i<_esc_count; i++) {
         auto &esc = _escs[i];
         if (esc.state != ESCState::RUNNING) {
@@ -729,6 +680,7 @@ void AP_FETtecOneWire::configure_escs()
         case ESCState::WAITING_SN:
             return;
 #endif
+#if HAL_WITH_ESC_TELEM
         case ESCState::WANT_SEND_SET_TLM_TYPE:
             if (transmit_config_request(PackedMessage<SET_TLM_TYPE>{esc.id, SET_TLM_TYPE{1}})) {
                 esc.set_state(ESCState::WAITING_SET_TLM_TYPE_OK);
@@ -736,6 +688,7 @@ void AP_FETtecOneWire::configure_escs()
             return;
         case ESCState::WAITING_SET_TLM_TYPE_OK:
             return;
+#endif
         case ESCState::WANT_SEND_SET_FAST_COM_LENGTH: {
             // FIXME: tidy this up a bit
             const uint16_t bit_count = 12 + (_esc_count * 11);
@@ -749,6 +702,7 @@ void AP_FETtecOneWire::configure_escs()
                 esc.set_state(ESCState::WAITING_SET_FAST_COM_LENGTH_OK);
             }
         }
+            return;
         case ESCState::WAITING_SET_FAST_COM_LENGTH_OK:
             return;
         case ESCState::RUNNING: {
@@ -811,9 +765,9 @@ void AP_FETtecOneWire::update()
 
     // consider resetting telemetry statistics
 #if HAL_WITH_ESC_TELEM
-    if (now - last_sent_msg_count_reset_ms > 1000) {
-        last_sent_msg_count_reset_ms = now;
-        _sent_msg_count = 0;
+    if (now - _last_fast_throttle_cmd_count_reset_ms > 1000) {
+        _last_fast_throttle_cmd_count_reset_ms = now;
+        _fast_throttle_cmd_count = 0;
         for (uint8_t i=0; i<_esc_count; i++) {
             auto &esc = _escs[i];
             esc.error_count = 0;
