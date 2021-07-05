@@ -39,6 +39,14 @@ TODO: ./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter
 
 #include "SIM_SerialDevice.h"
 
+#define SIM_FTW_DEBUGGING 1
+#if SIM_FTW_DEBUGGING
+#include <stdio.h>
+#define simfet_debug(fmt, args ...)  do {::fprintf(stderr,"SIMFET: %s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
+#else
+#define simfet_debug(fmt, args ...)
+#endif
+
 #include <stdio.h>
 
 namespace SITL {
@@ -68,7 +76,6 @@ private:
         uint8_t frame_len;
         uint8_t request_type;
     };
-//    assert_storage_size<ConfigMessage, 70> _assert_storage_size_RichenPacket;
 
     enum class TLMType : uint8_t {
         NORMAL = 0,
@@ -214,13 +221,21 @@ private:
 
     class ESC {
     public:
+
         enum class State {
             IN_BOOTLOADER = 17,
             RUNNING_START,
             RUNNING,
             // UNRESPONSIVE,
         };
+
+        void set_state(State _state) {
+            simfet_debug("Moving ESC.id=%u from state=%u to state=%u\n", (unsigned)id, (unsigned)state, (unsigned)_state);
+            state = _state;
+        }
+
         State state = State::IN_BOOTLOADER;
+
         uint8_t sn[12];
         TLMType telem_type;
         uint8_t id;

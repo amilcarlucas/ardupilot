@@ -18,13 +18,15 @@
   TODO: if we don't response to the second configuration message the driver does not currently reset
  - verify the assertion that DMA is required
  - verify prearm checks work if esc telem not compiled in
- - current code structure means we have to wake things from bootloader?
- - raw_length is used to find the checksum and that's determined from the expected message type rather than the received message type....
  - stop ignoring REQ_TYPE while in bootloader?
- - fix when telemetry is actually sent
  - correct visibility of members in simulation
- - consider "no-pulses" behaviour? (safety switch on)
  - need to rename FETtecOneWireESC to just FETtecESC now
+ - consider "no-pulses" behaviour? (safety switch on)
+ - work out what we should do when safety switch is engaged - what does "no pulses" do?  Note we can't get telem while not sending pulses
+ - vehicles that don't require arming might be in trouble
+ - half-duplex will require the use of a thread as every time we call update() we expect to send out a configuration message
+ - tidy break vs return oin AP_FETtec::handle_message
+ - determine if we should have a "REQ_OK" as well as an "OK"
 */
 
 #include <AP_Math/AP_Math.h>
@@ -83,7 +85,7 @@ void FETtecOneWireESC::update_escs()
         case ESC::State::RUNNING:
             continue;
         case ESC::State::RUNNING_START:
-            esc.state = ESC::State::RUNNING;
+            esc.set_state(ESC::State::RUNNING);
             send_response(PackedMessage<OK> {
                 esc.id,
                 OK{}
@@ -107,7 +109,7 @@ void FETtecOneWireESC::update(const struct sitl_input &input)
 void FETtecOneWireESC::handle_config_message()
 {
     ESC &esc = escs[u.config_message_header.target_id-1];
-    debug("Config message type=%u s=%u esc=%u", (unsigned)u.config_message_header.request_type, (unsigned)esc.state, (unsigned)u.config_message_header.target_id);
+    debug("Config message type=%u esc=%u", (unsigned)u.config_message_header.request_type, (unsigned)u.config_message_header.target_id);
     if ((ResponseFrameHeaderID)u.config_message_header.header != ResponseFrameHeaderID::MASTER) {
         AP_HAL::panic("Unexpected header ID");
     }
@@ -148,7 +150,7 @@ void FETtecOneWireESC::bootloader_handle_config_message(FETtecOneWireESC::ESC &e
     case ConfigMessageType::NOT_OK:
         break;
     case ConfigMessageType::BL_START_FW:       // BL only
-        esc.state = ESC::State::RUNNING_START;
+        esc.set_state(ESC::State::RUNNING_START);
         // the main firmware sends an OK
         return;
     case ConfigMessageType::BL_PAGES_TO_FLASH: // BL only
@@ -181,7 +183,11 @@ void FETtecOneWireESC::running_handle_config_message(FETtecOneWireESC::ESC &esc)
 
     case ConfigMessageType::BL_PAGE_CORRECT:   // BL only
     case ConfigMessageType::NOT_OK:
+        break;
     case ConfigMessageType::BL_START_FW:       // BL only
+        ::fprintf(stderr, "received unexpected BL_START_FW message\n");
+        AP_HAL::panic("received unexpected BL_START_FW message");
+        return;
     case ConfigMessageType::BL_PAGES_TO_FLASH: // BL only
         break;
 
@@ -346,7 +352,7 @@ void FETtecOneWireESC::update_input()
 
     // no config message, so let's see if there's fast PWM input.  We
     // use the first ESC's concept of the fast-com bytes...
-    uint8_t id_count = 12; //esc.fast_com.id_count;
+    uint8_t id_count = escs[0].fast_com.id_count; //esc.fast_com.id_count;
     const uint16_t total_bits_required = 12 + (id_count*11);
     const uint8_t bytes_required = 1 + (total_bits_required + 7) / 8;
 
