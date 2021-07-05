@@ -26,7 +26,7 @@
 
 // Support both full-duplex at 500Kbit/s as well as half-duplex at 2Mbit/s (optional feature)
 #ifndef HAL_AP_FETTEC_HALF_DUPLEX
-#define HAL_AP_FETTEC_HALF_DUPLEX 0
+#define HAL_AP_FETTEC_HALF_DUPLEX 1
 #endif
 
 // Get static info from the ESCs (optional feature)
@@ -187,6 +187,7 @@ private:
     uint8_t fast_throttle_byte_count;  // pre-calculated number of bytes required to send an entire packed throttle message
 
 #if HAL_AP_FETTEC_HALF_DUPLEX
+    uint8_t _ignore_own_bytes; ///< bytes to ignore while receiving, because we have transmitted them ourselves
     uint8_t _last_crc;       ///< the CRC from the last sent fast-throttle command
     bool _use_hdplex;        ///< use asynchronous half-duplex serial communication
 #endif

@@ -182,6 +182,11 @@ bool AP_FETtecOneWire::transmit(const uint8_t* bytes, uint8_t length)
     }
 
     _uart->write(bytes, length);
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    if (_use_hdplex) {
+        _ignore_own_bytes += length;
+    }
+#endif
     return true;
 }
 
@@ -404,6 +409,16 @@ void AP_FETtecOneWire::read_data_from_uart()
     byte 6 - X = answer type, followed by the payload
     byte X+1 = 8bit CRC
     */
+
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    //ignore own bytes
+    if (_use_hdplex) {
+        while (_ignore_own_bytes > 0 && _uart->available()) {
+            _ignore_own_bytes--;
+            _uart->read();
+        }
+    }
+#endif
 
     uint32_t bytes_to_read = MIN(_uart->available(), 1024U);
     uint32_t last_bytes_to_read = 0;
