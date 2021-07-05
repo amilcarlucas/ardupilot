@@ -582,7 +582,7 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 
 bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const
 {
-    if (_uart == nullptr) {
+    if (_uart == nullptr && _motor_mask_parameter != 0) {
         hal.util->snprintf(failure_msg, failure_msg_len, "No uart");
         return false;
     }
