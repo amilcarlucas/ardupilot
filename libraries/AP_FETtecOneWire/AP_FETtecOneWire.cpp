@@ -560,12 +560,6 @@ void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, 
 
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 {
-#if HAL_AP_FETTEC_HALF_DUPLEX
-    // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
-    // FIXME: put this back in
-    // _last_crc = fast_throttle_command[_fast_throttle.byte_count - 1];
-#endif
-
     uint8_t esc_id_to_request_telem_from = 0;
 #if HAL_WITH_ESC_TELEM
     ESC &esc_to_req_telem_from = _escs[_esc_ofs_to_request_telem_from++];
@@ -577,8 +571,84 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
     _fast_throttle_cmd_count++;
 #endif
 
-    uint8_t fast_throttle_command[_fast_throttle_byte_count];
-    pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), esc_id_to_request_telem_from);
+    uint8_t fast_throttle_command2[_fast_throttle_byte_count];
+    pack_fast_throttle_command(motor_values, fast_throttle_command2, sizeof(fast_throttle_command2), esc_id_to_request_telem_from);
+
+        // 8  bits - OneWire Header
+        // 4  bits - telemetry request
+        // 11 bits - throttle value per ESC
+        // 8  bits - frame CRC
+        // 7  dummy for rounding up the division by 8
+        uint8_t fast_throttle_command[_fast_throttle_byte_count] {};
+        uint8_t act_throttle_command = 0;
+
+        // byte 1:
+        // bit 0,1,2,3 = ESC ID, Bit 4 = MSB bit of first ESC (11bit) throttle value, bit 5,6,7 = frame header
+        // so AAAABCCC
+        // A = ID from the ESC telemetry is requested from. ESC ID == 0 means no request.
+        // B = MSB from first throttle value
+        // C = frame header
+        fast_throttle_command[0] = esc_id_to_request_telem_from << 4; // 0 here means no telemetry request
+        fast_throttle_command[0] |= ((motor_values[act_throttle_command] >> 10) & 0x01) << 3;
+        fast_throttle_command[0] |= 0x01;
+
+        // byte 2:
+        // AAABBBBB
+        // A = next 3 bits from (11bit) throttle value
+        // B = 5bit target ID
+        fast_throttle_command[1] = (((motor_values[act_throttle_command] >> 7) & 0x07)) << 5;
+        fast_throttle_command[1] |= 0x1F;      // All IDs
+
+        // following bytes are the rest 7 bit of the first (11bit) throttle value,
+        // and all bits from all other values, followed by the CRC byte
+        uint8_t bits_left_from_command = 7;
+        uint8_t act_byte = 2;
+        uint8_t bits_from_byte_left = 8;
+        const int16_t bit_count = 12 + (_esc_count * 11);
+        const int16_t _fast_throttle_bits_to_add_left = bit_count - 16;
+        int16_t bits_to_add_left = _fast_throttle_bits_to_add_left; // must be signed
+        while (bits_to_add_left > 0) {
+            if (bits_from_byte_left >= bits_left_from_command) {
+                fast_throttle_command[act_byte] |=
+                        (motor_values[act_throttle_command] & ((1 << bits_left_from_command) - 1))
+                                << (bits_from_byte_left - bits_left_from_command);
+                bits_to_add_left -= bits_left_from_command;
+                bits_from_byte_left -= bits_left_from_command;
+                act_throttle_command++;
+                bits_left_from_command = 11;
+                if (bits_to_add_left == 0) {
+                    act_byte++;
+                    bits_from_byte_left = 8;
+                }
+            } else {
+                fast_throttle_command[act_byte] |=
+                        (motor_values[act_throttle_command] >> (bits_left_from_command - bits_from_byte_left))
+                                & ((1 << bits_from_byte_left) - 1);
+                bits_to_add_left -= bits_from_byte_left;
+                bits_left_from_command -= bits_from_byte_left;
+                act_byte++;
+                bits_from_byte_left = 8;
+                if (bits_left_from_command == 0) {
+                    act_throttle_command++;
+                    bits_left_from_command = 11;
+                }
+            }
+        }
+
+        fast_throttle_command[sizeof(fast_throttle_command)-1] =
+                                      crc8_dvb_update(0, fast_throttle_command, sizeof(fast_throttle_command)-1);
+
+#if HAL_AP_FETTEC_HALF_DUPLEX
+        // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
+        // FIXME: put this back in
+        // _last_crc = fast_throttle_command[_fast_throttle.byte_count - 1];
+#endif
+
+/*
+        if (memcmp(fast_throttle_command, fast_throttle_command2, sizeof(fast_throttle_command2))) {
+            abort();
+        }
+*/
 
     // No command was yet sent, so no reply is expected and all information
     // on the receive buffer is either garbage or noise. Discard it
