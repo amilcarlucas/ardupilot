@@ -591,10 +591,6 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
     // _last_crc = fast_throttle_command[_fast_throttle.byte_count - 1];
 #endif
 
-    // No command was yet sent, so no reply is expected and all information
-    // on the receive buffer is either garbage or noise. Discard it
-    _uart->discard_input();
-
     // send throttle commands to all configured ESCs in a single packet transfer
     _sent_msg_count++;
 
@@ -610,6 +606,10 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 
     uint8_t fast_throttle_command[fast_throttle_byte_count];
     pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), esc_id_to_request_telem_from);
+
+    // No command was yet sent, so no reply is expected and all information
+    // on the receive buffer is either garbage or noise. Discard it
+    _uart->discard_input();
 
     transmit(fast_throttle_command, sizeof(fast_throttle_command));
 }
