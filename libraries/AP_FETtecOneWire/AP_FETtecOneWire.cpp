@@ -61,6 +61,8 @@ AP_FETtecOneWire *AP_FETtecOneWire::_singleton;
 
 AP_FETtecOneWire::AP_FETtecOneWire()
 {
+    AP_Param::setup_object_defaults(this, var_info);
+
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
     if (_singleton != nullptr) {
         AP_HAL::panic("AP_FETtecOneWire must be singleton");
