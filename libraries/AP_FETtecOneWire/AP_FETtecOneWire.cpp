@@ -114,7 +114,7 @@ void AP_FETtecOneWire::init()
     // we have a uart, allocate some memory:
     _esc_count = __builtin_popcount(_motor_mask_parameter);
     // OneWire supports at most 15 ESCs, because of the 4 bit limitation
-    // on the fast-trottle command.  But we are still limited to the
+    // on the fast-throttle command.  But we are still limited to the
     // number of ESCs the telem library will collect data for.
 #if HAL_WITH_ESC_TELEM
     if (_esc_count == 0 || _esc_count > MIN(15, ESC_TELEM_MAX_ESCS)) {
@@ -582,7 +582,11 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 
 bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const
 {
-    if (_uart == nullptr && _motor_mask_parameter != 0) {
+    if (_motor_mask_parameter == 0) {
+        return true;    // No FETtec ESCs are expected, no need to run further pre-arm checks
+    }
+
+    if (_uart == nullptr) {
         hal.util->snprintf(failure_msg, failure_msg_len, "No uart");
         return false;
     }
