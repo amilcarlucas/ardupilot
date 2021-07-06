@@ -438,7 +438,7 @@ void AP_FETtecOneWire::read_data_from_uart()
     }
 #endif
 
-    uint32_t bytes_to_read = MIN(_uart->available(), 1024U);
+    uint32_t bytes_to_read = MIN(_uart->available(), 128U);
     uint32_t last_bytes_to_read = 0;
     while (bytes_to_read &&
            bytes_to_read != last_bytes_to_read) {
