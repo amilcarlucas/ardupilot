@@ -651,7 +651,7 @@ void AP_FETtecOneWire::configure_escs()
     // note that we return as soon as we've transmitted anything in
     // case we're in one-wire mode
     for (uint8_t i=0; i<_esc_count; i++) {
-        auto &esc = _escs[i];;
+        auto &esc = _escs[i];
         switch (esc.state) {
         case ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE:
             // probe for bootloader or running firmware
