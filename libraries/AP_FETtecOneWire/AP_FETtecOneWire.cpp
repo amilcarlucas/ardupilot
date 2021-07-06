@@ -334,8 +334,8 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
             _message_invalid_in_state_count++;
             return;
         }
-        memset(esc.serial_number, '\0', ARRAY_SIZE(esc.serial_number));
-        memcpy(esc.serial_number, u.packed_sn.msg.sn, MIN(ARRAY_SIZE(esc.serial_number), ARRAY_SIZE(u.packed_sn.msg.sn)));
+        static_assert(ARRAY_SIZE(u.packed_sn.msg.sn) == ARRAY_SIZE(esc.serial_number), "Serial number array length missmatch");
+        memcpy(esc.serial_number, u.packed_sn.msg.sn, ARRAY_SIZE(u.packed_sn.msg.sn));
 #if HAL_WITH_ESC_TELEM
         esc.set_state(ESCState::WANT_SEND_SET_TLM_TYPE);
 #else

@@ -315,8 +315,7 @@ private:
     class PACKED SN {
     public:
         SN(uint8_t *_sn, uint8_t snlen) {
-            memset(sn, 0, ARRAY_SIZE(sn));
-            memcpy(sn, _sn, MIN(ARRAY_SIZE(sn), snlen));
+            memcpy(sn, _sn, ARRAY_SIZE(sn));
         }
         uint8_t sn[12];
     };
