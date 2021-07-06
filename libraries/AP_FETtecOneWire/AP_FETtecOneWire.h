@@ -321,7 +321,7 @@ private:
         uint8_t sn[12];
     };
 
-#endif
+#endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
 
     void pack_fast_throttle_command(const uint16_t *motor_values, uint8_t *buffer, const uint8_t length, const uint8_t esc_id_to_request_telem_from);
 
@@ -365,7 +365,7 @@ private:
         uint16_t tx_err_count;    // CRC error count, as perceived from the ESC receiving side
     };
 
-#endif
+#endif  // HAL_WITH_ESC_TELEM
 
 #if HAL_AP_FETTEC_ESC_BEEP
     class PACKED Beep {
@@ -378,7 +378,7 @@ private:
         // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here  (don't blame me --pb)
         uint16_t spacer = 0;
     };
-#endif
+#endif // HAL_AP_FETTEC_ESC_BEEP
 
 #if HAL_AP_FETTEC_ESC_LIGHT
     class PACKED LEDColour {
@@ -395,7 +395,7 @@ private:
         // add two zeros to make sure all ESCs can catch their command as we don't wait for a response here  (don't blame me --pb)
         uint16_t spacer = 0;
     };
-#endif
+#endif  // HAL_AP_FETTEC_ESC_LIGHT
 
     /*
      * Methods and data for transmitting data to the ESCSs:

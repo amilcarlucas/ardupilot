@@ -282,7 +282,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
 #else
             esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
 #endif
-#endif
+#endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
             break;
         }
         break;
@@ -299,7 +299,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
 #else
             esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
 #endif
-#endif
+#endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
         }
         break;
 
@@ -342,7 +342,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
         esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
 #endif
         break;
-#endif
+#endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
 
 #if HAL_WITH_ESC_TELEM
     case ESCState::WANT_SEND_SET_TLM_TYPE:
@@ -375,7 +375,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
         return handle_message_telem(esc);
 #else
         return;
-#endif
+#endif  // HAL_WITH_ESC_TELEM
 
     }
 }
@@ -413,7 +413,7 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
 
     esc.last_telem_us = AP_HAL::micros64();
 }
-#endif
+#endif  // HAL_WITH_ESC_TELEM
 
 // reads data from the UART, calling handle_message on any message found
 void AP_FETtecOneWire::read_data_from_uart()
@@ -683,7 +683,7 @@ void AP_FETtecOneWire::configure_escs()
             return;
         case ESCState::WAITING_SN:
             return;
-#endif
+#endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
 #if HAL_WITH_ESC_TELEM
         case ESCState::WANT_SEND_SET_TLM_TYPE:
             if (transmit_config_request(PackedMessage<SET_TLM_TYPE>{esc.id, SET_TLM_TYPE{1}})) {
@@ -793,7 +793,7 @@ void AP_FETtecOneWire::update()
             }
         }
     }
-#endif
+#endif  // HAL_WITH_ESC_TELEM
 }
 
 #if HAL_AP_FETTEC_ESC_BEEP
@@ -811,7 +811,7 @@ void AP_FETtecOneWire::beep(const uint8_t beep_frequency)
         transmit_config_request(PackedMessage<Beep>{esc.id, Beep{beep_frequency}});
     }
 }
-#endif
+#endif  // HAL_AP_FETTEC_ESC_BEEP
 
 #if HAL_AP_FETTEC_ESC_LIGHT
 /**
@@ -830,6 +830,6 @@ void AP_FETtecOneWire::led_color(const uint8_t r, const uint8_t g, const uint8_t
         transmit_config_request(PackedMessage<LEDColour>{esc.id, LEDColour{r, g, b}});
     }
 }
-#endif
+#endif  // HAL_AP_FETTEC_ESC_LIGHT
 
 #endif  // HAL_AP_FETTEC_ONEWIRE_ENABLED
