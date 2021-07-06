@@ -411,7 +411,7 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
           TelemetryType::CURRENT|
           TelemetryType::CONSUMPTION);
 
-    esc.last_telem_us = AP_HAL::micros64();
+    esc.last_telem_us = AP_HAL::micros();
 }
 #endif  // HAL_WITH_ESC_TELEM
 
@@ -600,7 +600,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
         return false;
     }
     uint8_t no_telem = 0;
-    const uint64_t now64 = AP_HAL::micros64();
+    const uint32_t now = AP_HAL::micros();
 #endif
 
     uint8_t not_running = 0;
@@ -611,7 +611,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
             continue;
         }
 #if HAL_WITH_ESC_TELEM
-        if (now64 - esc.last_telem_us > max_telem_interval_us) {
+        if (now - esc.last_telem_us > max_telem_interval_us) {
             no_telem++;
         }
 #endif
