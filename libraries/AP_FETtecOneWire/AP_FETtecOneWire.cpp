@@ -749,9 +749,10 @@ void AP_FETtecOneWire::update()
             some_not_running = true;
         }
         const SRV_Channel* c = SRV_Channels::srv_channel(esc.servo_ofs);
-        if (c == nullptr) {
+        if (c == nullptr) { // this should never ever happen, but just in case ...
+            motor_pwm[i] = 1000;
             some_not_running = true;
-            break;
+            continue;
         }
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1007, 2000);
         if (_reverse_mask_parameter & (1U << i)) {
