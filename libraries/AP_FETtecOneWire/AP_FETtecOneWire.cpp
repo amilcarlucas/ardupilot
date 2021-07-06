@@ -269,7 +269,6 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
     case ESCState::WAITING_OK_FOR_RUNNING_SW_TYPE:
         // "OK" is the only valid response
         if (!buffer_contains_ok(length)) {
-            esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE); // go back to try to wake up the ESC
             return;
         }
         switch (frame_source) {
@@ -279,6 +278,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
             break;
         case FrameSource::BOOTLOADER:
             esc.set_state(ESCState::WANT_SEND_START_FW);
+            esc.is_awake = true;
             break;
         case FrameSource::ESC:
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
@@ -290,6 +290,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
             esc.set_state(ESCState::WANT_SEND_SET_FAST_COM_LENGTH);
 #endif
 #endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+            esc.is_awake = true;
             break;
         }
         break;
@@ -660,6 +661,9 @@ void AP_FETtecOneWire::configure_escs()
             }
             return;
         case ESCState::WAITING_OK_FOR_RUNNING_SW_TYPE:
+            if (!esc.is_awake) {
+                esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE); // go back to try to wake up the ESC
+            }
             return;
         case ESCState::WANT_SEND_START_FW:
             if (transmit_config_request(PackedMessage<START_FW>{esc.id, START_FW{}})) {
