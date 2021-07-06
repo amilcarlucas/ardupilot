@@ -740,7 +740,7 @@ void AP_FETtecOneWire::update()
         if (esc.state != ESCState::RUNNING) {
             some_not_running = true;
         }
-        const SRV_Channel* c = SRV_Channels::srv_channel(esc.id-1);
+        const SRV_Channel* c = SRV_Channels::srv_channel(esc.servo_ofs);
         if (c == nullptr) {
             break;
         }
