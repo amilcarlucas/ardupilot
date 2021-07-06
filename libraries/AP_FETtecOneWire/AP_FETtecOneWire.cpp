@@ -134,21 +134,27 @@ void AP_FETtecOneWire::init()
     // bits set in the mask are set, which is important for sending
     // "fast throttle" commands.
     uint8_t esc_offset = 0;
-    uint8_t esc_id = 1;
+    uint8_t esc_id = 1;       // ESC ids are one-indexed
     bool seen_empty = false;
+    bool found_one = false;
     for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1, esc_id++) {
-        if ((mask & 0x1) == 0x0) {
-            seen_empty = true;
-            continue;
+        if (mask & 0x1) {
+            found_one = true;
         }
-        if (seen_empty) {
-            _invalid_mask = true;
-            delete[] _escs;
-            _escs = nullptr;
-            return;
+        if (found_one) {
+            if ((mask & 0x1) == 0x0) {
+                seen_empty = true;
+                continue;
+            }
+            if (seen_empty) {
+                _invalid_mask = true;
+                delete[] _escs;
+                _escs = nullptr;
+                return;
+            }
+            _escs[esc_offset].servo_ofs = esc_offset;
+            _escs[esc_offset++].id = esc_id;
         }
-        _escs[esc_offset].servo_ofs = esc_offset;
-        _escs[esc_offset++].id = esc_id;
     }
     _invalid_mask = false;  // mask is good
 
