@@ -277,7 +277,7 @@ void FETtecOneWireESC::handle_fast_esc_data()
         if (telem_request == escs[0].id) {
             escs[0].telem_request = true;
         }
-        ::fprintf(stderr, "pwm[%u] out: %u\n", 0, (unsigned)escs[0].pwm);
+        //::fprintf(stderr, "pwm[%u] out: %u\n", 0, (unsigned)escs[0].pwm);
     }
 
     // decode remainder of ESC values
@@ -294,7 +294,7 @@ void FETtecOneWireESC::handle_fast_esc_data()
                 escs[i].telem_request = true;
             }
             escs[i].pwm = tmp >> 5;
-            ::fprintf(stderr, "pwm[%u] out: %u\n", i, (unsigned)escs[i].pwm);
+            //::fprintf(stderr, "pwm[%u] out: %u\n", i, (unsigned)escs[i].pwm);
         }
         bit_ofs += 11;
         while (bit_ofs > 7) {
