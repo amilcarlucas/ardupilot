@@ -205,7 +205,7 @@ bool AP_FETtecOneWire::transmit_config_request(const uint8_t* bytes, const uint8
     if (hal.util->get_soft_armed()) {
         return false;
     }
-    return transmit(bytes, length);;
+    return transmit(bytes, length);
 }
 
 /// shifts data to start of buffer based on magic header bytes
@@ -777,7 +777,7 @@ void AP_FETtecOneWire::update()
             esc.error_count = 0;
         }
         // if we haven't seen an ESC in a while the user might have
-        // power-cycled them.  Try reinitialising.
+        // power-cycled them.  Try re-initialising.
         if (!hal.util->get_soft_armed()) {
             const uint32_t now_us = AP_HAL::micros();
             for (uint8_t i=0; i<_esc_count; i++) {
