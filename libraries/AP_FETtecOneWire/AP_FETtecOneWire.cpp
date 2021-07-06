@@ -269,6 +269,7 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
     case ESCState::WAITING_OK_FOR_RUNNING_SW_TYPE:
         // "OK" is the only valid response
         if (!buffer_contains_ok(length)) {
+            esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE); // go back to try to wake up the ESC
             return;
         }
         switch (frame_source) {
