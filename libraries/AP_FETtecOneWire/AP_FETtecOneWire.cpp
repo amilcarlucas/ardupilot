@@ -742,6 +742,7 @@ void AP_FETtecOneWire::update()
         }
         const SRV_Channel* c = SRV_Channels::srv_channel(esc.servo_ofs);
         if (c == nullptr) {
+            some_not_running = true;
             break;
         }
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1007, 2000);
