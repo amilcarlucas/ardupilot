@@ -16,6 +16,7 @@
   Simulator for the FETtecOneWireESC
 
   TODO: if we don't response to the second configuration message the driver does not currently reset
+ - fix the FETtec test on sitltest-copter-tests2b autotest to pass Ardupilot.org CI
  - verify the assertion that DMA is required
  - verify prearm checks work if esc telem not compiled in
  - stop ignoring REQ_TYPE while in bootloader?
