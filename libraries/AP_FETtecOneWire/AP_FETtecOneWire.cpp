@@ -693,19 +693,16 @@ void AP_FETtecOneWire::configure_escs()
         case ESCState::WAITING_SET_TLM_TYPE_OK:
             return;
 #endif
-        case ESCState::WANT_SEND_SET_FAST_COM_LENGTH: {
+        case ESCState::WANT_SEND_SET_FAST_COM_LENGTH:
             // FIXME: tidy this up a bit
-            const uint16_t bit_count = 12 + (_esc_count * 11);
-            const uint8_t byte_count = 1 + (bit_count + 7)/8;
             if (transmit_config_request(PackedMessage<SET_FAST_COM_LENGTH>{esc.id,
                             SET_FAST_COM_LENGTH{
-                            byte_count,
+                            _fast_throttle_byte_count,
                                 _escs[0].id,
                                 _esc_count
                                 }})) {
                 esc.set_state(ESCState::WAITING_SET_FAST_COM_LENGTH_OK);
             }
-        }
             return;
         case ESCState::WAITING_SET_FAST_COM_LENGTH_OK:
             return;
