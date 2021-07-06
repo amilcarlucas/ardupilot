@@ -244,7 +244,7 @@ bool AP_FETtecOneWire::transmit(const uint8_t esc_id, const uint8_t* bytes, uint
     */
     uint8_t transmit_arr[FRAME_OVERHEAD+MAX_TRANSMIT_LENGTH] = {0x01};
     transmit_arr[1] = esc_id+uint8_t(1); // one-indexed ESC ID
-    if (length > MAX_TRANSMIT_LENGTH) {
+    if (length > _uart->txspace() || length > MAX_TRANSMIT_LENGTH) {
         return false; // no, do not send at all
     }
     transmit_arr[4] = length + FRAME_OVERHEAD;
@@ -771,7 +771,9 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
         _uart->discard_input();
 
         // send throttle commands to all configured ESCs in a single packet transfer
-        _uart->write(fast_throttle_command, _fast_throttle.byte_count);
+        if (_uart->txspace() > _fast_throttle.byte_count) {
+            _uart->write(fast_throttle_command, _fast_throttle.byte_count);
+        }
     }
 }
 
