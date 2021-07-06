@@ -201,16 +201,16 @@ void AP_FETtecOneWire::configuration_check()
     }
 
     if (!all_escs_found) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %i of %i ESCs", _found_escs_count, _nr_escs_in_bitmask);
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %u of %u ESCs", _found_escs_count, _nr_escs_in_bitmask);
     }
 
     if (!all_escs_configured) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: configured only %i of %i ESCs", _configured_escs, _found_escs_count);
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: configured only %u of %u ESCs", _configured_escs, _found_escs_count);
     }
 
 #if HAL_WITH_ESC_TELEM
     if (telem_rx_missing) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %i of %i ESCs", num_active_escs, _nr_escs_in_bitmask);
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %u of %u ESCs", num_active_escs, _nr_escs_in_bitmask);
     }
 #endif
 
@@ -779,10 +779,49 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_
 
 bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_msg_len) const
 {
-    if (!_initialised) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "Not initialised");
+    if (_motor_mask_parameter == 0) {
+        return true;    // No FETtec ESCs are expected, no need to run further pre-arm checks
+    }
+
+    if (_uart == nullptr) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "No uart");
         return false;
     }
+
+    if (__builtin_popcount(_motor_mask_parameter.get()) != _nr_escs_in_bitmask) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "gap in SERVO_FTW_MASK bits");
+        return false;
+    }
+
+    const bool all_escs_contiguous = _fast_throttle.max_id - _fast_throttle.min_id < _found_escs_count;
+    if (!all_escs_contiguous){
+        hal.util->snprintf(failure_msg, failure_msg_len, "gap in IDs found");
+        return false;
+    }
+
+    const bool all_escs_found = _found_escs_count >= _nr_escs_in_bitmask;
+    if (!all_escs_found) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "found only %u of %u ESCs", _found_escs_count, _nr_escs_in_bitmask);
+        return false;
+    }
+
+    const bool all_escs_configured = _found_escs_count == _configured_escs;
+    if (!all_escs_configured) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "configured only %u of %u ESCs", _configured_escs, _found_escs_count);
+        return false;
+    }
+
+#if HAL_WITH_ESC_TELEM
+    const uint16_t active_esc_mask = AP::esc_telem().get_active_esc_mask();
+    const uint8_t num_active_escs = __builtin_popcount(active_esc_mask & _motor_mask);
+
+    bool telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 2 * MOTOR_COUNT_MAX);
+    if (telem_rx_missing) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "got TLM from only %u of %u ESCs", num_active_escs, _nr_escs_in_bitmask);
+        return false;
+    }
+#endif
+
     return true;
 }
 
