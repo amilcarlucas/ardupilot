@@ -289,8 +289,9 @@ void FETtecOneWireESC::handle_fast_esc_data()
     }
 
     // decode remainder of ESC values
-    // slides a window across the input buffer, extracting 11-bit ESC values
-    // byte_ofs*8 and bit_ofs are added to find current MSB
+
+    // slides a window across the input buffer, extracting 11-bit ESC
+    // values.  The top 11 bits in "window" are the ESC value.
     uint8_t byte_ofs = 2;
     uint32_t window = u.buffer[byte_ofs++]<<24;
     window <<= 7;
@@ -305,7 +306,6 @@ void FETtecOneWireESC::handle_fast_esc_data()
             if (telem_request == esc.id) {
                 esc.telem_request = true;
             }
-            // zero top bits in window by shifting left then right
             esc.pwm = window >> 21;
             simfet_debug("esc=%u out: %u", esc.id, (unsigned)esc.pwm);
         }
