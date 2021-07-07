@@ -28,6 +28,10 @@
  - half-duplex will require the use of a thread as every time we call update() we expect to send out a configuration message
  - tidy break vs return oin AP_FETtec::handle_message
  - determine if we should have a "REQ_OK" as well as an "OK"
+ - should rename simulated ESC "pwm" field to "value" or "fettech_value" or something
+
+Protocol:
+ - SET_FAST_COM_LENGTH could set a 32-bit bitmask that will be present rather than requring consecutive motors
 */
 
 #include <AP_Math/AP_Math.h>
@@ -70,7 +74,7 @@ FETtecOneWireESC::FETtecOneWireESC() : SerialDevice::SerialDevice()
     // initialise serial numbers and IDs
     for (uint8_t n=0; n<ARRAY_SIZE(escs); n++) {
         ESC &esc = escs[n];
-        esc.id = n+1;
+        esc.id = n+1;  // really should parameterise this
         for (uint8_t i=0; i<ARRAY_SIZE(esc.sn); i++) {
             esc.sn[i] = n+1;
         }
@@ -251,10 +255,12 @@ void FETtecOneWireESC::handle_config_message_set_tlm_type(ESC &esc)
 
 void FETtecOneWireESC::handle_fast_esc_data()
 {
-    uint8_t id_count = 12; // esc.fast_com.id_count;  // should come from autopilot
-
     // decode first byte - see driver for details
     const uint8_t telem_request = u.buffer[0] >> 4;
+
+    // offset into escs array for first esc involved in fast-throttle
+    // command:
+    const uint8_t esc0_ofs = fast_com.min_esc_id - 1;
 
     // ::fprintf(stderr, "telem_request=%u\n", (unsigned)telem_request);
     uint16_t esc0_pwm;
@@ -272,36 +278,53 @@ void FETtecOneWireESC::handle_fast_esc_data()
     // decode enough of third byte to complete pwm[0]
     esc0_pwm |= u.buffer[2] >> 1;
 
-    if (escs[0].state == ESC::State::RUNNING) {
-        escs[0].pwm = esc0_pwm;
+    if (escs[esc0_ofs].state == ESC::State::RUNNING) {
+        ESC &esc { escs[esc0_ofs] };
+        esc.pwm = esc0_pwm;
 
-        if (telem_request == escs[0].id) {
-            escs[0].telem_request = true;
+        if (telem_request == esc.id) {
+            esc.telem_request = true;
         }
-        //::fprintf(stderr, "pwm[%u] out: %u\n", 0, (unsigned)escs[0].pwm);
+        simfet_debug("esc=%u out: %u", esc.id, (unsigned)esc.pwm);
     }
 
     // decode remainder of ESC values
     // slides a window across the input buffer, extracting 11-bit ESC values
     // byte_ofs*8 and bit_ofs are added to find current MSB
     uint8_t byte_ofs = 2;
-    uint8_t bit_ofs = 7;
-    for (uint8_t i=1; i<id_count; i++) {
-        const uint16_t window = u.buffer[byte_ofs]<<8|u.buffer[byte_ofs+1];
-        // zero top bits in window by shifting left then right
-        const uint16_t tmp = uint16_t(window << bit_ofs);
-        if (escs[i].state == ESC::State::RUNNING) {
-            if (telem_request == escs[i].id) {
-                escs[i].telem_request = true;
+    uint32_t window = u.buffer[byte_ofs++]<<24;
+    window <<= 7;
+    uint8_t bits_free = 32-1;
+    for (uint8_t i=esc0_ofs+1; i<esc0_ofs+fast_com.id_count; i++) {
+        while (bits_free > 7) {
+            window |= u.buffer[byte_ofs++] << (bits_free-8);
+            bits_free -= 8;
+        }
+        ESC &esc { escs[i] };
+        if (esc.state == ESC::State::RUNNING) {
+            if (telem_request == esc.id) {
+                esc.telem_request = true;
             }
-            escs[i].pwm = tmp >> 5;
-            //::fprintf(stderr, "pwm[%u] out: %u\n", i, (unsigned)escs[i].pwm);
+            // zero top bits in window by shifting left then right
+            esc.pwm = window >> 21;
+            simfet_debug("esc=%u out: %u", esc.id, (unsigned)esc.pwm);
         }
-        bit_ofs += 11;
-        while (bit_ofs > 7) {
-            byte_ofs++;
-            bit_ofs -= 8;
+        window <<= 11;
+        bits_free += 11;
+    }
+
+    for (uint8_t i=0; i<ARRAY_SIZE(escs); i++) {
+        const ESC &esc { escs[i] };
+        if (esc.pwm == 0) {
+            continue;
         }
+        // this will need to adjust for reversals.  We should also set
+        // one of the simulated ESCs up to have a pair of motor wires
+        // crossed i.e. spin backwards.  Maybe a mask for it
+        if (esc.pwm >= 1000 && esc.pwm <= 2000) {
+            continue;
+        }
+        AP_HAL::panic("transmitted value out of range (%u)", esc.pwm);
     }
 }
 
@@ -351,11 +374,26 @@ void FETtecOneWireESC::update_input()
         return; // 1 message/loop....
     }
 
-    // no config message, so let's see if there's fast PWM input.  We
-    // use the first ESC's concept of the fast-com bytes...
-    uint8_t id_count = escs[0].fast_com.id_count; //esc.fast_com.id_count;
-    const uint16_t total_bits_required = 12 + (id_count*11);
-    const uint8_t bytes_required = 1 + (total_bits_required + 7) / 8;
+    // no config message, so let's see if there's fast PWM input.
+    if (fast_com.id_count == 255) {
+        // see if any ESC has been configured:
+        for (uint8_t i=0; i<ARRAY_SIZE(escs); i++) {
+            if (escs[i].fast_com.id_count == 255) {
+                continue;
+            }
+            fast_com.id_count = escs[i].fast_com.id_count;
+            fast_com.min_esc_id = escs[i].fast_com.min_esc_id;
+            break;
+        }
+    }
+    if (fast_com.id_count == 255) {
+        // no ESC is configured.  Ummm.
+        buflen = 0;
+        return;
+    }
+
+    const uint16_t total_bits_required = 4 + 1 + 7  + (fast_com.id_count*11);
+    const uint8_t bytes_required = (total_bits_required + 7) / 8 + 1;
 
     if (buflen < bytes_required) {
         return;
@@ -373,10 +411,10 @@ void FETtecOneWireESC::update_input()
     }
 
     // debug("Read (%d) bytes from autopilot (%u)", (signed)n, config_message_checksum_fail);
-    buflen = 0;
     if (n >= 0) {
         abort();
     }
+    buflen = 0;
 }
 
 void FETtecOneWireESC::update_sitl_input_pwm(struct sitl_input &input)

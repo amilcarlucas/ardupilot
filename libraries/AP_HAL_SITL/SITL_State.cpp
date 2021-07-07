@@ -829,7 +829,7 @@ void SITL_State::_simulator_servos(struct sitl_input &input)
                 _sitl->fetteconewireesc_sim.update_sitl_input_pwm(input);
                 for (uint8_t i=0; i<ARRAY_SIZE(input.servos); i++) {
                     if (input.servos[i] != 0 && input.servos[i] < 1000) {
-                        AP_HAL::panic("Bad input servo value");
+                        AP_HAL::panic("Bad input servo value (%u)", input.servos[i]);
                     }
                 }
             }

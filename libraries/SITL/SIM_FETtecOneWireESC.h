@@ -19,7 +19,7 @@
 
 param set SERIAL5_PROTOCOL 38
 param set SERIAL5_BAUD 500000
-param set SERVO_FTW_MASK 1
+param set SERVO_FTW_MASK 15
 param set SIM_FTOWESC_ENA 1
 reboot
 
@@ -39,7 +39,7 @@ TODO: ./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter
 
 #include "SIM_SerialDevice.h"
 
-#define SIM_FTW_DEBUGGING 1
+#define SIM_FTW_DEBUGGING 0
 #if SIM_FTW_DEBUGGING
 #include <stdio.h>
 #define simfet_debug(fmt, args ...)  do {::fprintf(stderr,"SIMFET: %s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
@@ -230,7 +230,7 @@ private:
         };
 
         void set_state(State _state) {
-            simfet_debug("Moving ESC.id=%u from state=%u to state=%u\n", (unsigned)id, (unsigned)state, (unsigned)_state);
+            simfet_debug("Moving ESC.id=%u from state=%u to state=%u", (unsigned)id, (unsigned)state, (unsigned)_state);
             state = _state;
         }
 
@@ -247,12 +247,18 @@ private:
             uint8_t length;
             uint8_t byte_count;
             uint8_t min_esc_id;
-            uint8_t id_count;
+            uint8_t id_count = 255;
         }  fast_com;
 
         uint16_t pwm;
         bool telem_request;  // true if we've been asked to send telem
     };
+
+    // canonical structure used for fast com, copied from an ESC
+    struct {
+        uint8_t min_esc_id;
+        uint8_t id_count = 255;
+    }  fast_com;
 
     void bootloader_handle_config_message(ESC &esc);
     void running_handle_config_message(ESC &esc);

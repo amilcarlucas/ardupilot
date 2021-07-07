@@ -46,7 +46,7 @@
 
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
 
-#define FTW_DEBUGGING 0
+#define FTW_DEBUGGING 1
 #if FTW_DEBUGGING
 #include <stdio.h>
 #define fet_debug(fmt, args ...)  do {::fprintf(stderr,"FETtec: %s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
