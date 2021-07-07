@@ -46,7 +46,7 @@
 
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
 
-#define FTW_DEBUGGING 1
+#define FTW_DEBUGGING 0
 #if FTW_DEBUGGING
 #include <stdio.h>
 #define fet_debug(fmt, args ...)  do {::fprintf(stderr,"FETtec: %s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
@@ -172,7 +172,7 @@ private:
         uint8_t servo_ofs;  ///< offset into ArduPilot servo array
         bool is_awake;
         void set_state(ESCState _state) {
-            fet_debug("Moving ESC.id=%u from state=%u to state=%u\n", (unsigned)id, (unsigned)state, (unsigned)_state);
+            fet_debug("Moving ESC.id=%u from state=%u to state=%u", (unsigned)id, (unsigned)state, (unsigned)_state);
             state = _state;
         };
         ESCState state = ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE;
