@@ -133,11 +133,12 @@ void AP_FETtecOneWire::init()
     // initialise ESC ids.  This also makes a sanity check that all
     // bits set in the mask are set, which is important for sending
     // "fast throttle" commands.
-    uint8_t esc_offset = 0;
+    uint8_t esc_offset = 0;  // offset into our array of ESCSs
     uint8_t esc_id = 1;       // ESC ids are one-indexed
     bool seen_empty = false;
     bool found_one = false;
-    for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1, esc_id++) {
+    uint8_t servo_chan_offset = 0;  // offset into servo_channels array
+    for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1) {
         if (mask & 0x1) {
             found_one = true;
         }
@@ -152,9 +153,11 @@ void AP_FETtecOneWire::init()
                 _escs = nullptr;
                 return;
             }
-            _escs[esc_offset].servo_ofs = esc_offset;
-            _escs[esc_offset++].id = esc_id;
+            _escs[esc_offset].servo_ofs = servo_chan_offset;
+            _escs[esc_offset].id = esc_id++;
+            esc_offset++;
         }
+        servo_chan_offset++;
     }
     _invalid_mask = false;  // mask is good
 
