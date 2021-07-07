@@ -6977,15 +6977,64 @@ class AutoTestCopter(AutoTest):
         ret.extend(self.tests1e())
         return ret
 
+    def FETtecESC_flight(self):
+        '''fly with servo outputs from FETtec ESC'''
+        self.start_subtest("FETtec EC flight")
+        num_wp = self.load_mission("copter_mission.txt", strict=False)
+        self.fly_loaded_mission(num_wp)
+
+    def fettec_assert_bad_mask(self, mask):
+        '''assert the mask is bad for fettec driver'''
+        self.start_subsubtest("Checking mask (%s) is bad" % (mask,))
+        self.context_push()
+        self.set_parameter("SERVO_FTW_MASK", mask)
+        self.reboot_sitl()
+        tstart = self.get_sim_time()
+        while True:
+            if self.get_sim_time_cached() - tstart > 20:
+                raise NotAchievedException("Expected mask to be only problem within 20 seconds")
+            try:
+                self.assert_prearm_failure("Invalid motor mask; need consecuti")
+                break
+            except NotAchievedException:
+                self.delay_sim_time(1)
+        self.context_pop()
+        self.reboot_sitl()
+
+    def fettec_assert_good_mask(self, mask):
+        '''assert the mask is bad for fettec driver'''
+        self.start_subsubtest("Checking mask (%s) is good" % (mask,))
+        self.context_push()
+        self.set_parameter("SERVO_FTW_MASK", mask)
+        self.reboot_sitl()
+        self.wait_ready_to_arm()
+        self.context_pop()
+        self.reboot_sitl()
+
+    def FETtecESC_preflight_checks(self):
+        '''ensure prearm checks work as expected'''
+        for bad_mask in [0b101, 0b1010]:
+            self.fettec_assert_bad_mask(bad_mask)
+        for good_mask in [0b10000, 0b110000, 0b1100000]:
+            self.fettec_assert_good_mask(good_mask)
+
     def FETtecESC(self):
         self.set_parameters({
             "SERIAL5_PROTOCOL": 38,
-            "SERVO_FTW_MASK": 15,
+            "SERVO_FTW_MASK": 0b11110000,
             "SIM_FTOWESC_ENA": 1,
+            "SERVO1_FUNCTION": 0,
+            "SERVO2_FUNCTION": 0,
+            "SERVO3_FUNCTION": 0,
+            "SERVO4_FUNCTION": 0,
+            "SERVO5_FUNCTION": 33,
+            "SERVO6_FUNCTION": 34,
+            "SERVO7_FUNCTION": 35,
+            "SERVO8_FUNCTION": 36,
         })
         self.customise_SITL_commandline(["--uartF=sim:fetteconewireesc"])
-        num_wp = self.load_mission("copter_mission.txt", strict=False)
-        self.fly_loaded_mission(num_wp)
+        self.FETtecESC_preflight_checks()
+        self.FETtecESC_flight()
 
     def tests1a(self):
         '''return list of all tests'''
