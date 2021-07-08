@@ -111,14 +111,15 @@ void AP_FETtecOneWire::init()
         return; // no serial port available, so nothing to do here
     }
 
-    _esc_count = __builtin_popcount(_motor_mask_parameter);
+    _motor_mask = _motor_mask_parameter; // take a copy that will not change after we leave this function
+    _esc_count = __builtin_popcount(_motor_mask);
 #if HAL_WITH_ESC_TELEM
     // OneWire supports at most 15 ESCs, because of the 4 bit limitation
     // on the fast-throttle command.  But we are still limited to the
     // number of ESCs the telem library will collect data for.
-    if (_esc_count == 0 || _motor_mask_parameter >= (1 << MIN(15, ESC_TELEM_MAX_ESCS))) {
+    if (_esc_count == 0 || _motor_mask >= (1 << MIN(15, ESC_TELEM_MAX_ESCS))) {
 #else
-    if (_esc_count == 0 || _motor_mask_parameter >= (1 << NUM_SERVO_CHANNELS)) {
+    if (_esc_count == 0 || _motor_mask >= (1 << NUM_SERVO_CHANNELS)) {
 #endif
         _invalid_mask = true;
         return;
@@ -136,7 +137,7 @@ void AP_FETtecOneWire::init()
     uint8_t esc_offset = 0;  // offset into our device-driver dynamically-allocated array of ESCSs
     uint8_t esc_id = 1;      // ESC ids inside FETtec protocol are one-indexed
     uint8_t servo_chan_offset = 0;  // offset into _motor_mask_parameter array
-    for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1, servo_chan_offset++) {
+    for (uint32_t mask = _motor_mask; mask != 0; mask >>= 1, servo_chan_offset++) {
         if (mask & 0x1) {
             _escs[esc_offset].servo_ofs = servo_chan_offset;
             _escs[esc_offset].id = esc_id++;
@@ -161,7 +162,7 @@ void AP_FETtecOneWire::init()
 
     // tell SRV_Channels about ESC capabilities
     // FIXME: should we wait until we've seen all ESCs before doing this?
-    SRV_Channels::set_digital_outputs(_motor_mask_parameter, 0);
+    SRV_Channels::set_digital_outputs(_motor_mask, 0);
 
     _init_done = true;
 }
@@ -705,6 +706,7 @@ void AP_FETtecOneWire::configure_escs()
         case ESCState::WAITING_SET_FAST_COM_LENGTH_OK:
             return;
         case ESCState::RUNNING: {
+            _running_mask |= (1 << esc.servo_ofs);
             break;
         }
         }
@@ -729,7 +731,7 @@ void AP_FETtecOneWire::update()
     }
 
     // run ESC configuration state machines
-    if (!hal.util->get_soft_armed()) {
+    if (_running_mask != _motor_mask) {
         configure_escs();
     }
 
@@ -785,7 +787,7 @@ void AP_FETtecOneWire::update()
             auto &esc = _escs[i];
             esc.error_count = 0;
         }
-        // if we haven't seen an ESC in a while the user might have
+        // if we haven't seen an ESC in a while, the user might have
         // power-cycled them.  Try re-initialising.
         if (!hal.util->get_soft_armed()) {
             const uint32_t now_us = AP_HAL::micros();
@@ -799,6 +801,7 @@ void AP_FETtecOneWire::update()
                 }
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "No telem from esc.id=%u; resetting", esc.id);
                 esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE);
+                _running_mask &= ~(1 << esc.servo_ofs);
             }
         }
     }
