@@ -761,6 +761,17 @@ void AP_FETtecOneWire::update()
         return;
     }
 
+#if defined(STM32F4)
+    // This check only works if TX DMA is active of if using half-duplex
+    const uint32_t last_tx_empty_us = _uart->get_last_tx_empty_us();
+    if ((last_tx_empty_us != 0) && (now - last_tx_empty_us < 500U)) {
+        // the last time the tx buffer got emptied was not too far in the past,
+        // do not send more data because FETtec needs a time gap between frames
+        _period_too_short++;
+        return;
+    }
+#endif
+
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
