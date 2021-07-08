@@ -724,13 +724,33 @@ void AP_FETtecOneWire::update()
     // read all data from incoming serial:
     read_data_from_uart();
 
+    // This check works with and without TX DMA
     if (_uart->tx_pending()) {
         // there is unsent data in the send buffer,
         // do not send more data because FETtec needs a time gap between frames
+        _period_too_short++;
         return;
     }
 
-    // run ESC configuration state machines
+    const uint32_t now = AP_HAL::micros();
+    // This check only works if TX DMA is active
+    const uint32_t last_tx_empty_us = _uart->get_last_tx_empty_us();
+    if ((last_tx_empty_us != 0) && (now - last_tx_empty_us < 700U)) {
+        // the last time the tx buffer got emptied was not too far in the past,
+        // do not send more data because FETtec needs a time gap between frames
+        _period_too_short++;
+        return;
+    }
+
+    if (now - _last_update_us < 700U) {
+        // in case the SRV_Channels::push() is running at very high rates, limit the period
+        // this function gets executed because FETtec needs a time gap between frames
+        _period_too_short++;
+        return;
+    }
+    _last_update_us = now;
+
+    // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
     }
@@ -761,7 +781,7 @@ void AP_FETtecOneWire::update()
         }
     }
 
-    const uint32_t now = AP_HAL::millis();
+    const uint32_t now_ms = AP_HAL::millis();
 
     if (some_not_running) {
         if (!hal.util->get_soft_armed()) {
@@ -769,8 +789,8 @@ void AP_FETtecOneWire::update()
         }
         // OK, darn.  We appear to be flying with an ESC in a bad
         // state.  Well, we might not be flying for long...
-        if (now - _last_not_running_warning_ms > 5000) {
-            _last_not_running_warning_ms = now;
+        if (now_ms - _last_not_running_warning_ms > 5000) {
+            _last_not_running_warning_ms = now_ms;
             GCS_SEND_TEXT(MAV_SEVERITY_INFO, "FETtec: Some ESCs are not running");
         }
     }
@@ -790,13 +810,12 @@ void AP_FETtecOneWire::update()
         // if we haven't seen an ESC in a while, the user might have
         // power-cycled them.  Try re-initialising.
         if (!hal.util->get_soft_armed()) {
-            const uint32_t now_us = AP_HAL::micros();
             for (uint8_t i=0; i<_esc_count; i++) {
                 auto &esc = _escs[i];
                 if (esc.last_telem_us == 0) {
                     return;
                 }
-                if (now_us - esc.last_telem_us < 1000000) {
+                if (now - esc.last_telem_us < 1000000) {
                     continue;
                 }
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "No telem from esc.id=%u; resetting", esc.id);
