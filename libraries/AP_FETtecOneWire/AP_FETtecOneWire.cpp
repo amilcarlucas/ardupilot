@@ -761,6 +761,15 @@ void AP_FETtecOneWire::update()
         return;
     }
 
+#if defined(STM32F4)
+    if (_uart->tx_pending()) {
+        // there is unsent data in the send buffer,
+        // do not send more data because FETtec needs a time gap between frames
+        _period_too_short++;
+        return;
+    }
+#endif
+
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
