@@ -738,6 +738,12 @@ void AP_FETtecOneWire::update()
     // read all data from incoming serial:
     read_data_from_uart();
 
+    if (_uart->tx_pending()) {
+        // there is unsent data in the send buffer,
+        // do not send more data because FETtec needs a time gap between frames
+        return;
+    }
+
     // run ESC configuration state machines
     if (!hal.util->get_soft_armed()) {
         configure_escs();
