@@ -753,6 +753,19 @@ void AP_FETtecOneWire::update()
     // read all data from incoming serial:
     read_data_from_uart();
 
+    if (now - _last_transmit_us < 700U) {
+        // in case the SRV_Channels::push() is running at very high rates, limit the period
+        // this function gets executed because FETtec needs a time gap between frames
+        _period_too_short++;
+        return;
+    }
+
+    if (_uart->tx_pending()) {
+        // there is unsent data in the send buffer,
+        // do not send more data because FETtec needs a time gap between frames
+        return;
+    }
+
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
