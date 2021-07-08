@@ -111,53 +111,37 @@ void AP_FETtecOneWire::init()
         return; // no serial port available, so nothing to do here
     }
 
-    // we have a uart, allocate some memory:
     _esc_count = __builtin_popcount(_motor_mask_parameter);
+#if HAL_WITH_ESC_TELEM
     // OneWire supports at most 15 ESCs, because of the 4 bit limitation
     // on the fast-throttle command.  But we are still limited to the
     // number of ESCs the telem library will collect data for.
-#if HAL_WITH_ESC_TELEM
-    if (_esc_count == 0 || _esc_count > MIN(15, ESC_TELEM_MAX_ESCS)) {
+    if (_esc_count == 0 || _motor_mask_parameter >= (1 << MIN(15, ESC_TELEM_MAX_ESCS))) {
 #else
-    if (_esc_count == 0 || _esc_count > NUM_SERVO_CHANNELS) {
+    if (_esc_count == 0 || _motor_mask_parameter >= (1 << NUM_SERVO_CHANNELS)) {
 #endif
         _invalid_mask = true;
         return;
     }
 
+    // we have a uart and the desired ESC combination id valid, allocate some memory:
     _escs = new ESC[_esc_count];
     if (_escs == nullptr) {
         return;
     }
 
-    // initialise ESC ids.  This also makes a sanity check that all
-    // bits set in the mask are set, which is important for sending
-    // "fast throttle" commands.
-    uint8_t esc_offset = 0;  // offset into our array of ESCSs
-    uint8_t esc_id = 1;       // ESC ids are one-indexed
-    bool seen_empty = false;
-    bool found_one = false;
-    uint8_t servo_chan_offset = 0;  // offset into servo_channels array
-    for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1) {
+    // initialise ESC ids.  This also enforces that the FETtec ESC ids
+    // inside FETtec ESCs need to be contiguous and start at ID 1
+    // which is important for sending "fast throttle" commands.
+    uint8_t esc_offset = 0;  // offset into our device-driver dynamically-allocated array of ESCSs
+    uint8_t esc_id = 1;      // ESC ids inside FETtec protocol are one-indexed
+    uint8_t servo_chan_offset = 0;  // offset into _motor_mask_parameter array
+    for (uint32_t mask = _motor_mask_parameter; mask != 0; mask >>= 1, servo_chan_offset++) {
         if (mask & 0x1) {
-            found_one = true;
-        }
-        if (found_one) {
-            if ((mask & 0x1) == 0x0) {
-                seen_empty = true;
-                continue;
-            }
-            if (seen_empty) {
-                _invalid_mask = true;
-                delete[] _escs;
-                _escs = nullptr;
-                return;
-            }
             _escs[esc_offset].servo_ofs = servo_chan_offset;
             _escs[esc_offset].id = esc_id++;
             esc_offset++;
         }
-        servo_chan_offset++;
     }
     _invalid_mask = false;  // mask is good
 
