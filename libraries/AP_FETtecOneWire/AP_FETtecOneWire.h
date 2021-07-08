@@ -203,7 +203,7 @@ private:
     bool _invalid_mask;  ///< true if the mask parameter is invalid
 
     enum class FrameSource : uint8_t {
-        MASTER     = 0x01,
+        MASTER     = 0x01,  ///< master is always 0x01
         BOOTLOADER = 0x02,
         ESC        = 0x03,
     };
@@ -248,7 +248,7 @@ private:
         {
             update_checksum();
         }
-        uint8_t frame_source { 0x01 };  // master is always 0x01
+        uint8_t frame_source { (uint8_t)FrameSource::MASTER };
         uint8_t esc_id;
         uint16_t frame_type { 0 };  // bootloader only, always zero
         uint8_t frame_length {sizeof(T) + FRAME_OVERHEAD};  // all bytes including frame_source and checksum
