@@ -17,20 +17,19 @@
 
   TODO: if we don't response to the second configuration message the driver does not currently reset
  - verify the assertion that DMA is required
- - verify prearm checks work if esc telem not compiled in
  - stop ignoring REQ_TYPE while in bootloader?
  - correct visibility of members in simulation
- - need to rename FETtecOneWireESC to just FETtecESC now
- - consider "no-pulses" behaviour? (safety switch on)
- - work out what we should do when safety switch is engaged - what does "no pulses" do?  Note we can't get telem while not sending pulses
  - vehicles that don't require arming might be in trouble
  - half-duplex will require the use of a thread as every time we call update() we expect to send out a configuration message
  - tidy break vs return oin AP_FETtec::handle_message
  - determine if we should have a "REQ_OK" as well as an "OK"
- - should rename simulated ESC "pwm" field to "value" or "fettech_value" or something
+ - should rename simulated ESC "pwm" field to "value" or "fettec_value" or something
 
 Protocol:
  - SET_FAST_COM_LENGTH could set a 32-bit bitmask that will be present rather than requring consecutive motors
+ - Use two magic bytes in the header instead of just one
+ - Use a 16bit CRC
+ - the reply request needs to repeat the data that it replies to, to make sure the reply can be clearly assigned to a request
 */
 
 #include <AP_Math/AP_Math.h>
