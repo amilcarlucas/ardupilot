@@ -387,10 +387,10 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
     // update rpm and error rate
     float error_rate_pct = 0;
     if (_fast_throttle_cmd_count) {
-        error_rate_pct = esc.error_count/(float)_fast_throttle_cmd_count;
+        error_rate_pct = esc.error_count*(float)100/(float)_fast_throttle_cmd_count;
     }
     update_rpm(esc.servo_ofs,
-               tlm.rpm*100*2/_pole_count_parameter,
+               tlm.rpm*(100*2/_pole_count_parameter),
                error_rate_pct);
 
     // update power and temperature telem data
