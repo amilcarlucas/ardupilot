@@ -138,7 +138,7 @@ public:
     bool is_dma_enabled() const override { return rx_dma_enabled && tx_dma_enabled; }
 
     // get the last time when the tx write buffer got emptied
-    uint32_t get_last_tx_empty_us() const override { return _last_write_completed_us; }
+    uint32_t get_last_tx_empty_us() const override { return (tx_dma_enabled && _writebuf.is_empty()) ? _last_write_completed_us : 0; }
 
 private:
     const SerialDef &sdef;
