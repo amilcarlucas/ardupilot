@@ -59,22 +59,32 @@ There are two types of messages sent to the ESCs configuration and fast-throttle
 Consists of six frame bytes + payload bytes.
 
 ```
-    Byte 0 is the transfer direction (e.g. 0x01 Master to Slave)
+    Byte 0 is the source type
     Byte 1 is the ID
     Byte 2 is the frame type (Low byte)
     Byte 3 is the frame type (High byte)
     Byte 4 is the frame length
     Byte 5-254 is the payload
     Byte 6-255 is CRC (last Byte after the Payload). It uses the same CRC algorithm as Dshot.
-```	
+```
+
+#### Check if bootloader or ESC firmware is running
+To check which firmware is running on the FETtec an ESCs `PackedMessage<OK>` is sent to each ESC.
+If the answer frame `frame_source` is FrameSource::BOOTLOADER we are in bootloader and need to send an `PackedMessage<START_FW>` to start the ESC firmware.
+If the answer frame `frame_source` is FrameSource::ESC we are already running the correct firmware and can directly configure the telemetry.
+
+#### Start the ESC firmware
+If the ESC is running on bootloader firmware we need to send an `PackedMessage<START_FW>` to start the ESC firmware.
+The answer must be a `PackedMessage<OK>` with `frame_source` equal to FrameSource::ESC. If not, we need to repeat the command.
+
 #### Configure Full/Alternative Telemetry
 The telemetry can be switched to "per ESC" Mode, where one ESC answers with it's full telemetry as oneWire package including CRC and additionally the CRC Errors counted by the ESC.
 To use this mode, `PackedMessage<SET_TLM_TYPE>` is send to each ESC while initializing.
-If this was successful the ESC responds with `MsgType::OK`.
+If this was successful the ESC responds with `PackedMessage<OK>`.
 
 #### Configure Fast throttle messages
 To configure the fast-throttle frame structure a `PackedMessage<SET_FAST_COM_LENGTH>` is send to each ESC while initializing.
-If this was successful the ESC responds with `MsgType::OK`.
+If this was successful the ESC responds with `PackedMessage<OK>`.
 
 ### Fast-throttle message frame
 
