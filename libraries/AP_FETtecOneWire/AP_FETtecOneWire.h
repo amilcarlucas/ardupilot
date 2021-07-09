@@ -113,6 +113,7 @@ private:
 
     static constexpr uint8_t FRAME_OVERHEAD = 6;
     static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
+    static constexpr uint8_t SERIAL_NUMBER_LENGTH = 12;
 
     /**
         initialize the device driver: configure serial port, wake-up and configure ESCs
@@ -178,7 +179,7 @@ private:
         ESCState state = ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE;
 
 #if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
-        uint8_t serial_number[12];
+        uint8_t serial_number[SERIAL_NUMBER_LENGTH];
         uint8_t firmware_version;
         uint8_t firmware_subversion;
         uint8_t type;
@@ -321,7 +322,7 @@ private:
         SN(uint8_t *_sn, uint8_t snlen) {
             memcpy(sn, _sn, ARRAY_SIZE(sn));
         }
-        uint8_t sn[12];
+        uint8_t sn[SERIAL_NUMBER_LENGTH];
     };
 
 #endif  // HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
@@ -467,6 +468,16 @@ private:
 #endif
         uint8_t receive_buf[FRAME_OVERHEAD + MAX_RECEIVE_LENGTH];
     } u;
+
+    static_assert(sizeof(u.packed_ok) <= sizeof(u.receive_buf),"packed_ok does not fit in receive_buf. MAX_RECEIVE_LENGTH too small?");
+#if HAL_AP_FETTEC_ONEWIRE_GET_STATIC_INFO
+    static_assert(sizeof(u.packed_esc_type) <= sizeof(u.receive_buf),"packed_esc_type does not fit in receive_buf. MAX_RECEIVE_LENGTH too small?");
+    static_assert(sizeof(u.packed_sw_ver) <= sizeof(u.receive_buf),"packed_sw_ver does not fit in receive_buf. MAX_RECEIVE_LENGTH too small?");
+    static_assert(sizeof(u.packed_sn) <= sizeof(u.receive_buf),"packed_sn does not fit in receive_buf. MAX_RECEIVE_LENGTH too small?");
+#endif
+#if HAL_WITH_ESC_TELEM
+    static_assert(sizeof(u.packed_tlm) <= sizeof(u.receive_buf),"packed_tlm does not fit in receive_buf. MAX_RECEIVE_LENGTH too small?");
+#endif
 
     uint16_t _unknown_esc_message;
     uint16_t _message_invalid_in_state_count;
