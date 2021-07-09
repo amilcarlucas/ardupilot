@@ -135,20 +135,9 @@ This information is used by Ardupilot to:
 - Optionally measure battery voltage and power consumption
 
 
-## Full/Alternative Telemetry
-The answer is packed inside a OneWire package, that can be received with the `FETtecOneWire::handle_message_telem()` function.
-
-As the packages are send in an uInt8_t array the values must be restored like as only temp is one byte long:
-
-```C++
-    Telemetry[0]= telem[0];              // Temperature [°C/10]
-    Telemetry[1]=(telem[1]<<8)|telem[2]; // Voltage [V/10]
-    Telemetry[2]=(telem[3]<<8)|telem[4]; // Current [A/10]
-    Telemetry[3]=(telem[5]<<8)|telem[6]; // ERPM/100 (must be divided by number of motor poles to translate to propeller RPM)
-    Telemetry[4]=(telem[7]<<8)|telem[8]; // Consumption [mA.h]
-    Telemetry[5]=(telem[9]<<8)|telem[10];// CRC error (ArduPilot->ESC) counter
-```
-
+### Full/Alternative Telemetry
+The answer to a fast-throttle command frame is a `PackedMessage<TLM>` message frame, received and decoded in the `FETtecOneWire::handle_message_telem()` function.
+The data is forwarded to the `AP_ESC_Telem` class that distributes it to other parts of the ArduPilot code.
 
 
 
