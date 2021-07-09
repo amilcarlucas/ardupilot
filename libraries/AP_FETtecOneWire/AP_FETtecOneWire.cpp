@@ -148,17 +148,27 @@ void AP_FETtecOneWire::init()
 
     gcs().send_text(MAV_SEVERITY_INFO, "FETtec: allocated %u motors", _esc_count);
 
-#if HAL_WITH_ESC_TELEM
-    // telemetry is fetched from each loop in turn.  We expect to be
-    // able to send a fast-throttle message each loop.
+    // We expect to be able to send a fast-throttle message each loop.
     // 8  bits - OneWire Header
     // 4  bits - telemetry request
     // 11 bits - throttle value per ESC
     // 8  bits - frame CRC
-    const uint16_t bit_count = 8 + 4 + (_esc_count * 11) + 8;
+    const uint16_t net_bit_count = 8 + 4 + (_esc_count * 11) + 8;
     // 7  dummy for rounding up the division by 8
-    _fast_throttle_byte_count = (bit_count + 7)/8;
+    const uint16_t fast_throttle_byte_count = (net_bit_count + 7)/8;
+    uint16_t telemetry_byte_count { 0U };
+#if HAL_WITH_ESC_TELEM
+    // Telemetry is fetched from each loop in turn.
+    telemetry_byte_count = sizeof(u.packed_tlm) + 1; // assume 9 pause bits between TX and RX
+    _fast_throttle_byte_count = fast_throttle_byte_count;
 #endif
+    uint32_t uart_baud { 500000U };
+#if HAL_AP_FETTEC_HALF_DUPLEX
+    if (_use_hdplex == true) { //Half-Duplex is enabled
+        uart_baud = 2000000U;
+    }
+#endif
+    _min_update_period_us = (fast_throttle_byte_count + telemetry_byte_count) * 9 * 1000000 / uart_baud + 300; // 300us extra reserve
 
     // tell SRV_Channels about ESC capabilities
     // FIXME: should we wait until we've seen all ESCs before doing this?
@@ -739,14 +749,14 @@ void AP_FETtecOneWire::update()
     const uint32_t now = AP_HAL::micros();
     // This check only works if TX DMA is active
     const uint32_t last_tx_empty_us = _uart->get_last_tx_empty_us();
-    if ((last_tx_empty_us != 0) && (now - last_tx_empty_us < 700U)) {
+    if ((last_tx_empty_us != 0) && (now - last_tx_empty_us < _min_update_period_us)) {
         // the last time the tx buffer got emptied was not too far in the past,
         // do not send more data because FETtec needs a time gap between frames
         _period_too_short++;
         return;
     }
 
-    if (now - _last_update_us < 700U) {
+    if (now - _last_update_us < _min_update_period_us) {
         // in case the SRV_Channels::push() is running at very high rates, limit the period
         // this function gets executed because FETtec needs a time gap between frames
         _period_too_short++;
