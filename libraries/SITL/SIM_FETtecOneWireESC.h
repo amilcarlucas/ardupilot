@@ -27,7 +27,7 @@ param fetch
 
 #param set SIM_FTOWESC_FM 1  # fail mask
 
-TODO: ./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter.FETtecOneWireESC
+./Tools/autotest/autotest.py --gdb --debug build.ArduCopter fly.ArduCopter.FETtecESC
 
 */
 
@@ -68,6 +68,7 @@ public:
 private:
 
     AP_Int8  _enabled;  // enable FETtec ESC sim
+    AP_Int32  _powered_mask;  // mask of ESCs with power
 
     struct PACKED ConfigMessageHeader {
         uint8_t header;  // master is always 0x01
@@ -223,7 +224,8 @@ private:
     public:
 
         enum class State {
-            IN_BOOTLOADER = 17,
+            POWERED_OFF = 17,
+            IN_BOOTLOADER,
             RUNNING_START,
             RUNNING,
             // UNRESPONSIVE,
@@ -234,7 +236,7 @@ private:
             state = _state;
         }
 
-        State state = State::IN_BOOTLOADER;
+        State state = State::POWERED_OFF;
 
         uint8_t sn[12];
         TLMType telem_type;
@@ -243,6 +245,7 @@ private:
         static const uint8_t sw_version = 3;
         static const uint8_t sw_subversion = 4;
 
+        // make sure to zero any state when powering the virtual ESC on
         struct {
             uint8_t length;
             uint8_t byte_count;

@@ -30,6 +30,8 @@ Protocol:
  - Use two magic bytes in the header instead of just one
  - Use a 16bit CRC
  - the reply request needs to repeat the data that it replies to, to make sure the reply can be clearly assigned to a request
+ - need to cope with reversals
+ - in the case that we don't have ESC telemetry, consider probing ESCs periodically with an "OK"-request while disarmed
 */
 
 #include <AP_Math/AP_Math.h>
@@ -41,15 +43,6 @@ Protocol:
 #include <stdio.h>
 #include <errno.h>
 
-
-#define FTW_DEBUGGING 0
-#if FTW_DEBUGGING
-#include <stdio.h>
-#define debug(fmt, args ...)  do {::fprintf(stderr,"%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
-#else
-#define debug(fmt, args ...)
-#endif
-
 using namespace SITL;
 
 // table of user settable parameters
@@ -60,7 +53,13 @@ const AP_Param::GroupInfo FETtecOneWireESC::var_info[] = {
     // @Description: Allows you to enable (1) or disable (0) the FETtecOneWireESC simulator
     // @Values: 0:Disabled,1:Enabled
     // @User: Advanced
-    AP_GROUPINFO("ENA", 0, FETtecOneWireESC, _enabled, 0),
+    AP_GROUPINFO("ENA", 1, FETtecOneWireESC, _enabled, 0),
+
+    // @Param: PWOF
+    // @DisplayName: Power off FETtech ESC mask
+    // @Description: Allows you to turn power off to the simulated ESCs.  Bits correspond to the ESC ID, *NOT* their servo channel.
+    // @User: Advanced
+    AP_GROUPINFO("POW", 2, FETtecOneWireESC, _powered_mask, 0xfff),
 
     AP_GROUPEND
 };
@@ -81,9 +80,31 @@ FETtecOneWireESC::FETtecOneWireESC() : SerialDevice::SerialDevice()
 
 void FETtecOneWireESC::update_escs()
 {
-    for (uint8_t i=0; i<ARRAY_SIZE(escs); i++) {
-        ESC &esc = escs[i];
+    // process the power-off mask
+    for (auto  &esc : escs) {
+        bool should_be_on = _powered_mask & (1U<<(esc.id-1));
         switch (esc.state) {
+        case ESC::State::POWERED_OFF:
+            if (should_be_on) {
+                esc.state = ESC::State::IN_BOOTLOADER;
+                esc.pwm = 0;
+                esc.fast_com = {};
+                esc.telem_request = false;
+            }
+            break;
+        case ESC::State::IN_BOOTLOADER:
+        case ESC::State::RUNNING:
+        case ESC::State::RUNNING_START:
+            if (!should_be_on) {
+                esc.state = ESC::State::POWERED_OFF;
+                break;
+            }
+        }
+    }
+
+    for (auto  &esc : escs) {
+        switch (esc.state) {
+        case ESC::State::POWERED_OFF:
         case ESC::State::IN_BOOTLOADER:
         case ESC::State::RUNNING:
             continue;
@@ -112,11 +133,13 @@ void FETtecOneWireESC::update(const struct sitl_input &input)
 void FETtecOneWireESC::handle_config_message()
 {
     ESC &esc = escs[u.config_message_header.target_id-1];
-    debug("Config message type=%u esc=%u", (unsigned)u.config_message_header.request_type, (unsigned)u.config_message_header.target_id);
+    simfet_debug("Config message type=%u esc=%u", (unsigned)u.config_message_header.request_type, (unsigned)u.config_message_header.target_id);
     if ((ResponseFrameHeaderID)u.config_message_header.header != ResponseFrameHeaderID::MASTER) {
         AP_HAL::panic("Unexpected header ID");
     }
     switch (esc.state) {
+    case ESC::State::POWERED_OFF:
+        return;
     case ESC::State::IN_BOOTLOADER:
         return bootloader_handle_config_message(esc);
     case ESC::State::RUNNING_START:
@@ -130,7 +153,7 @@ void FETtecOneWireESC::handle_config_message()
 template <typename T>
 void FETtecOneWireESC::send_response(const T &r)
 {
-    debug("Sending response");
+    // simfet_debug("Sending response");
     if (write_to_autopilot((char*)&r, sizeof(r)) != sizeof(r)) {
         AP_HAL::panic("short write");
     }
@@ -365,7 +388,7 @@ void FETtecOneWireESC::update_input()
             consume_bytes(u.config_message_header.frame_len);
             return;
         } else {
-            debug("Checksum mismatch");
+            simfet_debug("Checksum mismatch");
             abort();
             // config_message_checksum_fail = true;
         }
