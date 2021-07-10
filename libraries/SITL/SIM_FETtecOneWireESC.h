@@ -57,7 +57,7 @@ public:
     FETtecOneWireESC();
 
     // update state
-    void update(const struct sitl_input &input);
+    void update(const class Aircraft &aircraft);
 
     static const AP_Param::GroupInfo var_info[];
 
@@ -255,6 +255,10 @@ private:
 
         uint16_t pwm;
         bool telem_request;  // true if we've been asked to send telem
+
+        uint8_t ofs;
+
+        float temperature;
     };
 
     // canonical structure used for fast com, copied from an ESC
@@ -272,10 +276,10 @@ private:
     void handle_fast_esc_data();
 
     void update_escs();
-    void update_send();
+    void update_send(const class Aircraft &aircraft);
     void update_input();
 
-    void send_esc_telemetry();
+    void send_esc_telemetry(const class Aircraft &aircraft);
 
     template <typename T>
     void send_response(const T& r);

@@ -43,6 +43,8 @@ Protocol:
 #include "SITL.h"
 #include <AP_HAL/utility/sparse-endian.h>
 
+#include "SIM_Aircraft.h"
+
 #include <stdio.h>
 #include <errno.h>
 
@@ -74,6 +76,7 @@ FETtecOneWireESC::FETtecOneWireESC() : SerialDevice::SerialDevice()
     // initialise serial numbers and IDs
     for (uint8_t n=0; n<ARRAY_SIZE(escs); n++) {
         ESC &esc = escs[n];
+        esc.ofs = n;  // so we can index for RPM, for example
         esc.id = n+1;  // really should parameterise this
         for (uint8_t i=0; i<ARRAY_SIZE(esc.sn); i++) {
             esc.sn[i] = n+1;
@@ -119,9 +122,19 @@ void FETtecOneWireESC::update_escs()
             });
         }
     }
+
+    for (auto  &esc : escs) {
+        if (esc.state != ESC::State::RUNNING) {
+            continue;
+        }
+        // FIXME: this may not be an entirely accurate model of the
+        // temperature profile of these ESCs.
+        esc.temperature += esc.pwm/100000;
+        esc.temperature *= 0.95;
+    }
 }
 
-void FETtecOneWireESC::update(const struct sitl_input &input)
+void FETtecOneWireESC::update(const class Aircraft &aircraft)
 {
     if (!_enabled.get()) {
         return;
@@ -130,7 +143,7 @@ void FETtecOneWireESC::update(const struct sitl_input &input)
     update_escs();
 
     update_input();
-    update_send();
+    update_send(aircraft);
 }
 
 void FETtecOneWireESC::handle_config_message()
@@ -455,12 +468,13 @@ void FETtecOneWireESC::update_sitl_input_pwm(struct sitl_input &input)
     }
 }
 
-void FETtecOneWireESC::send_esc_telemetry()
+void FETtecOneWireESC::send_esc_telemetry(const Aircraft &aircraft)
 {
     for (auto &esc : escs) {
         if (!esc.telem_request) {
             continue;
         }
+        esc.telem_request = false;
         if (esc.state != ESC::State::RUNNING) {
             continue;
         }
@@ -468,12 +482,16 @@ void FETtecOneWireESC::send_esc_telemetry()
             // no idea what "normal" looks like
             abort();
         }
-        esc.telem_request = false;
 
-        const int8_t temp_cdeg = (5 + esc.id) * 100;
-        const uint16_t voltage = (6 + esc.id * 100);
+        const int8_t temp_cdeg = esc.temperature * 100;
+        const uint16_t voltage = aircraft.get_battery_voltage() * 100;
         const uint16_t current = (6 + esc.id * 100);
-        const int16_t rpm = ARRAY_SIZE(escs)/2 - esc.id;
+
+        // FIXME: the vehicle models should be supplying this RPM!
+        const uint16_t Kv = 1000;
+        const float p = (esc.pwm-1000)/1000.0;
+        int16_t rpm = aircraft.get_battery_voltage() * Kv * p;
+
         const uint16_t consumption_mah = 0;
         const uint16_t errcount = 17;
         send_response(PackedMessage<ESCTelem> {
@@ -483,7 +501,7 @@ void FETtecOneWireESC::send_esc_telemetry()
     }
 }
 
-void FETtecOneWireESC::update_send()
+void FETtecOneWireESC::update_send(const Aircraft &aircraft)
 {
-    send_esc_telemetry();
+    send_esc_telemetry(aircraft);
 }
