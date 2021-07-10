@@ -772,7 +772,7 @@ void AP_FETtecOneWire::update()
         if (hal.util->safety_switch_state() == AP_HAL::Util::SAFETY_DISARMED) {
             motor_pwm[i] = 1000;  // stop motors
         } else {
-            motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1007, 2000);
+            motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
         }
         fet_debug("esc=%u in: %u", esc.id, motor_pwm[i]);
         if (_reverse_mask_parameter & (1U << i)) {
