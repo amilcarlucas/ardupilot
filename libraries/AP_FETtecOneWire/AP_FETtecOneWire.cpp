@@ -408,7 +408,7 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
     TelemetryData t {};
     t.temperature_cdeg = tlm.temp * 100;
     t.voltage = tlm.voltage * 0.01f;
-    t.current = tlm.voltage * 0.01f;
+    t.current = tlm.current * 0.01f;
     t.consumption_mah = tlm.consumption_mah;
     update_telem_data(
         esc.servo_ofs,
