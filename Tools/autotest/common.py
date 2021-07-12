@@ -4796,7 +4796,7 @@ class AutoTest(ABC):
             current_value_getter=lambda: self.get_esc_rpm(esc),
             accuracy=rpm_max-rpm_min,
             validator=lambda value2, target2: validator(value2, target2),
-            **kwargs,
+            **kwargs
         )
 
     def wait_altitude(self, altitude_min, altitude_max, relative=False, timeout=30, **kwargs):
