@@ -168,7 +168,7 @@ void AP_FETtecOneWire::configuration_check()
     _reverse_mask= _reverse_mask_parameter;
 
     const uint32_t now = AP_HAL::millis();
-    if ((now - _last_config_check_ms < 3000) && _last_config_check_ms != 0) {  // only runs once every 3 seconds
+    if ((now - _last_config_check_ms < 6000) && _last_config_check_ms != 0) {  // only runs once every 6 seconds
         return;
     }
     _last_config_check_ms = now;
@@ -182,14 +182,14 @@ void AP_FETtecOneWire::configuration_check()
 
     const bool all_escs_found = _found_escs_count >= _nr_escs_in_bitmask;
     const bool all_escs_configured = _found_escs_count == _configured_escs;
-    const bool all_escs_contiguous = _fast_throttle.max_id - _fast_throttle.min_id < _found_escs_count;
+    const bool all_escs_contiguous = (_fast_throttle.max_id - _fast_throttle.min_id) < _found_escs_count;
     bool telem_rx_missing = false;
 #if HAL_WITH_ESC_TELEM
     // TLM recovery, if e.g. a power loss occurred but FC is still powered by USB.
     const uint16_t active_esc_mask = AP::esc_telem().get_active_esc_mask();
     const uint8_t num_active_escs = __builtin_popcount(active_esc_mask & _motor_mask);
 
-    telem_rx_missing = (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 2 * MOTOR_COUNT_MAX);
+    telem_rx_missing = all_escs_configured && (num_active_escs < _nr_escs_in_bitmask) && (_sent_msg_count > 3 * _nr_escs_in_bitmask);
 #endif
 
     if (__builtin_popcount(_motor_mask_parameter.get()) != _nr_escs_in_bitmask) {
@@ -200,16 +200,16 @@ void AP_FETtecOneWire::configuration_check()
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: gap in IDs found");
     }
 
-    if (!all_escs_found) {
+    if (all_escs_contiguous && !all_escs_found) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: found only %u of %u ESCs", _found_escs_count, _nr_escs_in_bitmask);
     }
 
-    if (!all_escs_configured) {
+    if (all_escs_found && !all_escs_configured) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: configured only %u of %u ESCs", _configured_escs, _found_escs_count);
     }
 
 #if HAL_WITH_ESC_TELEM
-    if (telem_rx_missing) {
+    if (all_escs_configured && telem_rx_missing) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "FTW: got TLM from only %u of %u ESCs", num_active_escs, _nr_escs_in_bitmask);
     }
 #endif
