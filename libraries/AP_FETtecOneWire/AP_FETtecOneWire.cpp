@@ -693,6 +693,10 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 */
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_t tlm_request)
 {
+    if (_uart->txspace()!=511 || _uart->tx_pending()) {
+        return;
+    }
+
     if (_found_escs_count > 0) {
         // 8  bits - OneWire Header
         // 4  bits - telemetry request
