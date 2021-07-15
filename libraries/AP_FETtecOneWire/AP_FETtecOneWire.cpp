@@ -403,7 +403,7 @@ void AP_FETtecOneWire::scan_escs()
     uint8_t request[2];
 
     const uint32_t now = AP_HAL::micros();
-    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? 5000U : 2000U)) {
+    if (now - _scan.last_us < (_scan.state == scan_state_t::WAIT_START_FW ? 6000U : 3000U)) {
         // the scan_escs() call period must be bigger than 2000 US,
         // as the bootloader has some message timing requirements. And we might be in bootloader
         return;
