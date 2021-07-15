@@ -233,6 +233,7 @@ private:
 #endif
     } _found_escs[MOTOR_COUNT_MAX]; ///< Zero-indexed array
 
+    uint32_t _uart_txspace;
     uint32_t _last_config_check_ms;
 #if HAL_WITH_ESC_TELEM
     float _crc_error_rate_factor; ///< multiply factor. Used to avoid division operations
