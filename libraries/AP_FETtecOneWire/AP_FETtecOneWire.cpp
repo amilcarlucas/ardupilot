@@ -215,7 +215,7 @@ void AP_FETtecOneWire::configuration_check()
     }
 #endif
 
-    if (!all_escs_contiguous || !all_escs_found || !all_escs_configured || telem_rx_missing) {
+    if (!all_escs_contiguous || !all_escs_found || !all_escs_configured) {
         // re-init the entire device driver
 #if HAL_WITH_ESC_TELEM
         _sent_msg_count = 0;
@@ -817,6 +817,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
     }
 
 #if HAL_WITH_ESC_TELEM
+/*
     const uint16_t active_esc_mask = AP::esc_telem().get_active_esc_mask();
     const uint8_t num_active_escs = __builtin_popcount(active_esc_mask & _motor_mask);
 
@@ -825,6 +826,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
         hal.util->snprintf(failure_msg, failure_msg_len, "got TLM from only %u of %u ESCs", num_active_escs, _nr_escs_in_bitmask);
         return false;
     }
+*/
 #endif
 
     return true;
