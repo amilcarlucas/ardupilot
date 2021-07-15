@@ -109,6 +109,7 @@ void AP_FETtecOneWire::init()
         _uart->begin(500000U);
 #endif
     }
+    _uart_txspace = _uart->txspace();
 
     if (_scan.state != scan_state_t::DONE) {
         scan_escs();
@@ -693,7 +694,7 @@ AP_FETtecOneWire::receive_response AP_FETtecOneWire::decode_single_esc_telemetry
 */
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values, const int8_t tlm_request)
 {
-    if (_uart->txspace()!=511 || _uart->tx_pending()) {
+    if (_uart->txspace() < _uart_txspace || _uart->tx_pending()) {
         return;
     }
 
