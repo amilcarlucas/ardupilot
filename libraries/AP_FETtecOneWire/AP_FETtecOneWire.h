@@ -188,7 +188,7 @@ private:
 #endif
     };
 
-    uint32_t _min_update_period_us;         ///< minimum allowed update period
+    uint32_t _min_transmit_period_us;         ///< minimum allowed update period
     uint32_t _last_not_running_warning_ms;  ///< last time we warned the user their ESCs are stuffed
     int32_t _motor_mask;                    ///< an un-mutable copy of the _motor_mask_parameter taken before _init_done goes true
     int32_t _running_mask;                  ///< a bitmask of the actively running ESCs
