@@ -173,7 +173,7 @@ void AP_FETtecOneWire::init()
         uart_baud = HALF_DUPLEX_BAUDRATE;
     }
 #endif
-    _min_update_period_us = (fast_throttle_byte_count + telemetry_byte_count) * 9 * 1000000 / uart_baud + 300; // 300us extra reserve
+    _min_fast_throttle_period_us = (fast_throttle_byte_count + telemetry_byte_count) * 9 * 1000000 / uart_baud + 300; // 300us extra reserve
 
     // tell SRV_Channels about ESC capabilities
     // FIXME: should we wait until we've seen all ESCs before doing this?
@@ -190,6 +190,15 @@ void AP_FETtecOneWire::init()
 */
 bool AP_FETtecOneWire::transmit(const uint8_t* bytes, const uint8_t length)
 {
+    const uint32_t now = AP_HAL::micros();
+    if (now - _last_transmit_us < _min_fast_throttle_period_us) {
+        // in case the SRV_Channels::push() is running at very high rates, limit the period
+        // this function gets executed because FETtec needs a time gap between frames
+        // this also prevents one loop to do multiple actions, like reinitialize an ESC and sending a fast throttle command without a gap.
+        _period_too_short++;
+        return false;
+    }
+    _last_transmit_us = now;
     if (length > _uart->txspace()) {
         return false;
     }
@@ -731,6 +740,7 @@ void AP_FETtecOneWire::configure_escs()
 /// periodically called from SRV_Channels::push()
 void AP_FETtecOneWire::update()
 {
+    const uint32_t now = AP_HAL::micros();
     if (!_init_done) {
         init();
         return; // the rest of this function can only run after fully initted
@@ -738,15 +748,6 @@ void AP_FETtecOneWire::update()
 
     // read all data from incoming serial:
     read_data_from_uart();
-
-    const uint32_t now = AP_HAL::micros();
-    if (now - _last_update_us < _min_update_period_us) {
-        // in case the SRV_Channels::push() is running at very high rates, limit the period
-        // this function gets executed because FETtec needs a time gap between frames
-        _period_too_short++;
-        return;
-    }
-    _last_update_us = now;
 
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
