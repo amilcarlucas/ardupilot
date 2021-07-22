@@ -186,11 +186,11 @@ private:
 #endif
     };
 
-    uint32_t _min_update_period_us;         ///< minimum allowed update period
+    uint32_t _min_fast_throttle_period_us;  ///< minimum allowed fast_throttle command transmit period
     uint32_t _last_not_running_warning_ms;  ///< last time we warned the user their ESCs are stuffed
     int32_t _motor_mask;                    ///< an un-mutable copy of the _motor_mask_parameter taken before _init_done goes true
     int32_t _running_mask;                  ///< a bitmask of the actively running ESCs
-    uint32_t _last_update_us;               ///< last time the update() function ran
+    uint32_t _last_transmit_us;             ///< last time the transmit() function sent data
     ESC *_escs;
     uint8_t _esc_count;                ///< number of allocated ESCs
     uint8_t _fast_throttle_byte_count; ///< pre-calculated number of bytes required to send an entire packed throttle message
