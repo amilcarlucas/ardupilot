@@ -168,7 +168,7 @@ private:
 #if HAL_WITH_ESC_TELEM
         uint32_t last_telem_us;              ///< last time we got telemetry from this ESC
         uint32_t last_reset_us;
-        uint16_t error_count;                ///< error counter from the ESCs.
+        uint16_t error_count_at_throttle_count_overflow;            ///< overflow counter for error counter from the ESCs.
         bool telem_expected;                 ///< this ESC is fully configured and is now expected to send us telemetry
 #endif
 
@@ -339,7 +339,6 @@ private:
 #if HAL_WITH_ESC_TELEM
     void handle_message_telem(ESC &esc);
 
-    uint32_t _last_fast_throttle_cmd_count_reset_us;
     uint16_t _fast_throttle_cmd_count;     ///< number of fast-throttle commands sent by the flight controller
 
     /// the ESC at this offset into _escs should be the next to send a
