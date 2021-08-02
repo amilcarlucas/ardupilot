@@ -408,12 +408,12 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
     // the following two methods are coming from AP_ESC_Telem:
     const TLM &tlm = u.packed_tlm.msg;
 
-    esc.error_count += __bswap_16(tlm.tx_err_count);
-
     // update rpm and error rate
     float error_rate_pct = 0;
     if (_fast_throttle_cmd_count) {
-        error_rate_pct = esc.error_count*(float)100/(float)_fast_throttle_cmd_count;
+        error_rate_pct = (__bswap_16(tlm.tx_err_count)-esc.error_count_at_throttle_count_overflow)*(float)100/(float)_fast_throttle_cmd_count;
+    } else {
+        esc.error_count_at_throttle_count_overflow = __bswap_16(tlm.tx_err_count);
     }
     update_rpm(esc.servo_ofs,
                __bswap_16(tlm.rpm)*(100*2/_pole_count_parameter),
@@ -801,16 +801,6 @@ void AP_FETtecOneWire::update()
             esc.last_reset_us = now;
             GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "No telem from esc.id=%u; resetting it", esc.id);
             esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE);
-        }
-    }
-
-    // consider resetting telemetry statistics
-    if (now - _last_fast_throttle_cmd_count_reset_us > 1000000) {
-        _last_fast_throttle_cmd_count_reset_us = now;
-        _fast_throttle_cmd_count = 0;
-        for (uint8_t i=0; i<_esc_count; i++) {
-            auto &esc = _escs[i];
-            esc.error_count = 0;
         }
     }
 #endif  // HAL_WITH_ESC_TELEM
