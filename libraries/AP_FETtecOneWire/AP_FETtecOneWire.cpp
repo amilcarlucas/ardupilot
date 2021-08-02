@@ -21,6 +21,7 @@
 #include <SRV_Channel/SRV_Channel.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Math/AP_Math.h>
+#include <AP_Common/missing/byteswap.h>
 
 #include "AP_FETtecOneWire.h"
 #if HAL_AP_FETTEC_ONEWIRE_ENABLED
@@ -407,7 +408,7 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
     // the following two methods are coming from AP_ESC_Telem:
     const TLM &tlm = u.packed_tlm.msg;
 
-    esc.error_count += tlm.tx_err_count;
+    esc.error_count += __bswap_16(tlm.tx_err_count);
 
     // update rpm and error rate
     float error_rate_pct = 0;
@@ -415,15 +416,15 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
         error_rate_pct = esc.error_count*(float)100/(float)_fast_throttle_cmd_count;
     }
     update_rpm(esc.servo_ofs,
-               tlm.rpm*(100*2/_pole_count_parameter),
+               __bswap_16(tlm.rpm)*(100*2/_pole_count_parameter),
                error_rate_pct);
 
     // update power and temperature telem data
     TelemetryData t {};
     t.temperature_cdeg = tlm.temp * 100;
-    t.voltage = tlm.voltage * 0.01f;
-    t.current = tlm.current * 0.01f;
-    t.consumption_mah = tlm.consumption_mah;
+    t.voltage = __bswap_16(tlm.voltage) * 0.01f;
+    t.current = __bswap_16(tlm.current) * 0.01f;
+    t.consumption_mah = __bswap_16(tlm.consumption_mah);
     update_telem_data(
         esc.servo_ofs,
         t,
