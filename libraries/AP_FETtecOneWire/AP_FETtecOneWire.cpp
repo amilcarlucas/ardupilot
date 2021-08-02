@@ -733,10 +733,9 @@ void AP_FETtecOneWire::configure_escs()
             return;
         case ESCState::WAITING_SET_FAST_COM_LENGTH_OK:
             return;
-        case ESCState::RUNNING: {
+        case ESCState::RUNNING:
             _running_mask |= (1 << esc.servo_ofs);
             break;
-        }
         }
     }
 }
@@ -779,15 +778,17 @@ void AP_FETtecOneWire::update()
         }
     }
 
+    // send motor setpoints to ESCs, and request for telemetry data
+    escs_set_values(motor_pwm);
+
 #if HAL_WITH_ESC_TELEM
     if (!hal.util->get_soft_armed()) {
-    // const uint32_t now_ms = AP_HAL::millis();
 
         // if we haven't seen an ESC in a while, the user might
         // have power-cycled them.  Try re-initialising.
         for (uint8_t i=0; i<_esc_count; i++) {
             auto &esc = _escs[i];
-            if (now - esc.last_telem_us < 1000000) {
+            if (!esc.telem_expected || now - esc.last_telem_us < 1000000) {
                 // telem OK
                 continue;
             }
@@ -804,15 +805,10 @@ void AP_FETtecOneWire::update()
             esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE);
         }
     }
-#endif
-
-    // send motor setpoints to ESCs, and request for telemetry data
-    escs_set_values(motor_pwm);
 
     // consider resetting telemetry statistics
-#if HAL_WITH_ESC_TELEM
-    if (now - _last_fast_throttle_cmd_count_reset_ms > 1000) {
-        _last_fast_throttle_cmd_count_reset_ms = now;
+    if (now - _last_fast_throttle_cmd_count_reset_us > 1000000) {
+        _last_fast_throttle_cmd_count_reset_us = now;
         _fast_throttle_cmd_count = 0;
         for (uint8_t i=0; i<_esc_count; i++) {
             auto &esc = _escs[i];
