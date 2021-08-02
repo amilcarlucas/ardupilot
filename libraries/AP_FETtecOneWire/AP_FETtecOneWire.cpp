@@ -795,22 +795,21 @@ void AP_FETtecOneWire::update()
 
 #if HAL_WITH_ESC_TELEM
     if (!hal.util->get_soft_armed()) {
-    // const uint32_t now_ms = AP_HAL::millis();
 
         // if we haven't seen an ESC in a while, the user might
         // have power-cycled them.  Try re-initialising.
         for (uint8_t i=0; i<_esc_count; i++) {
             auto &esc = _escs[i];
-            if (now - esc.last_telem_us < 1000000) {
+            if (esc.state != ESCState::RUNNING) {
+                continue;
+            }
+            if (_fast_throttle_cmd_count < _esc_count || now - esc.last_telem_us < 1000000) {
                 // telem OK
                 continue;
             }
             _running_mask &= ~(1 << esc.servo_ofs);
             if (now - esc.last_reset_us < 5000000) {
                 // only attempt reset periodically
-                continue;
-            }
-            if (esc.state == ESCState::UNINITIALISED) {
                 continue;
             }
             esc.last_reset_us = now;
