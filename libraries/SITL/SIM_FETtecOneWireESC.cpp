@@ -39,6 +39,7 @@ Protocol:
 #include "SIM_FETtecOneWireESC.h"
 #include "SITL.h"
 #include <AP_HAL/utility/sparse-endian.h>
+#include <AP_Common/missing/byteswap.h>
 
 #include "SIM_Aircraft.h"
 
@@ -493,7 +494,7 @@ void FETtecOneWireESC::send_esc_telemetry(const Aircraft &aircraft)
         const uint16_t errcount = 17;
         send_response(PackedMessage<ESCTelem> {
             esc.id,
-            ESCTelem{temp_cdeg, voltage, current, rpm, consumption_mah, errcount}
+            ESCTelem{temp_cdeg, __bswap_16(voltage), __bswap_16(current), __bswap_16(rpm), __bswap_16(consumption_mah), __bswap_16(errcount)}
         });
     }
 }
