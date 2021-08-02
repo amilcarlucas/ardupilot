@@ -339,7 +339,7 @@ private:
 #if HAL_WITH_ESC_TELEM
     void handle_message_telem(ESC &esc);
 
-    uint32_t _last_fast_throttle_cmd_count_reset_ms;
+    uint32_t _last_fast_throttle_cmd_count_reset_us;
     uint16_t _fast_throttle_cmd_count;     ///< number of fast-throttle commands sent by the flight controller
 
     /// the ESC at this offset into _escs should be the next to send a
