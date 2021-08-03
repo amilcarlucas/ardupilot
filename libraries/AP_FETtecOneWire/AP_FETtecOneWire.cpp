@@ -755,7 +755,7 @@ void AP_FETtecOneWire::update()
 
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
-        configure_escs();
+        //configure_escs();
     }
 
     // get ESC set points
