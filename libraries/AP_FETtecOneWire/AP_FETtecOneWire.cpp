@@ -763,6 +763,7 @@ void AP_FETtecOneWire::update()
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
+        return; // do not send fast_throttle data if a configuration command just got sent
     }
 
     // get ESC set points
