@@ -619,7 +619,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
     }
 #if HAL_WITH_ESC_TELEM
     if (_pole_count_parameter < 2) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "Invalid pole count %u", _pole_count_parameter);
+        hal.util->snprintf(failure_msg, failure_msg_len, "Invalid pole count %u", uint8_t(_pole_count_parameter));
         return false;
     }
     uint8_t no_telem = 0;
