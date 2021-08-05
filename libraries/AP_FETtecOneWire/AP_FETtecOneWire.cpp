@@ -177,7 +177,8 @@ void AP_FETtecOneWire::init()
     _min_fast_throttle_period_us = (fast_throttle_byte_count + telemetry_byte_count) * 9 * 1000000 / uart_baud + 300; // 300us extra reserve
 
     // tell SRV_Channels about ESC capabilities
-    // FIXME: should we wait until we've seen all ESCs before doing this?
+    // this is a bit soonish because we have not seen the ESCs on the bus yet,
+    // but saves us having to use a state variable to ensure doing this latter just once
     SRV_Channels::set_digital_outputs(_motor_mask, 0);
 
     _init_done = true;
@@ -722,7 +723,6 @@ void AP_FETtecOneWire::configure_escs()
             return;
 #endif
         case ESCState::WANT_SEND_SET_FAST_COM_LENGTH:
-            // FIXME: tidy this up a bit
             if (transmit_config_request(PackedMessage<SET_FAST_COM_LENGTH>{esc.id,
                             SET_FAST_COM_LENGTH{
                             _fast_throttle_byte_count,
