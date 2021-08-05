@@ -137,10 +137,10 @@ void AP_FETtecOneWire::init()
         return;
     }
 
-    // initialise ESC ids.  This also enforces that the FETtec ESC ids
+    // initialise ESC ids.  This enforces that the FETtec ESC ids
     // inside FETtec ESCs need to be contiguous and start at ID 1
-    // which is important for sending "fast throttle" commands.
-    uint8_t esc_offset = 0;  // offset into our device-driver dynamically-allocated array of ESCSs
+    // which required by fast-throttle commands.
+    uint8_t esc_offset = 0;  // offset into our device-driver dynamically-allocated array of ESCs
     uint8_t esc_id = 1;      // ESC ids inside FETtec protocol are one-indexed
     uint8_t servo_chan_offset = 0;  // offset into _motor_mask_parameter array
     for (uint32_t mask = _motor_mask; mask != 0; mask >>= 1, servo_chan_offset++) {
@@ -154,7 +154,7 @@ void AP_FETtecOneWire::init()
 
     gcs().send_text(MAV_SEVERITY_INFO, "FETtec: allocated %u motors", _esc_count);
 
-    // We expect to be able to send a fast-throttle message each loop.
+    // We expect to be able to send a fast-throttle command in each loop.
     // 8  bits - OneWire Header
     // 4  bits - telemetry request
     // 11 bits - throttle value per ESC
@@ -196,7 +196,7 @@ bool AP_FETtecOneWire::transmit(const uint8_t* bytes, const uint8_t length)
     if (now - _last_transmit_us < _min_fast_throttle_period_us) {
         // in case the SRV_Channels::push() is running at very high rates, limit the period
         // this function gets executed because FETtec needs a time gap between frames
-        // this also prevents one loop to do multiple actions, like reinitialize an ESC and sending a fast throttle command without a gap.
+        // this also prevents one loop to do multiple actions, like reinitialize an ESC and sending a fast-throttle command without a gap.
         _period_too_short++;
         return false;
     }
@@ -524,7 +524,7 @@ void AP_FETtecOneWire::read_data_from_uart()
 }
 
 /**
-    packs a single fast-throttle frame containing the throttle for all configured OneWire ESCs.
+    packs a single fast-throttle command frame containing the throttle for all configured OneWire ESCs.
     @param motor_values a 16bit array containing the throttle values that should be sent to the motors. 0-2000 where 1001-2000 is positive rotation and 0-999 reversed rotation
     @param esc_id_to_request_telem_from the ESC to request telemetry from
 */
@@ -764,7 +764,7 @@ void AP_FETtecOneWire::update()
     // run ESC configuration state machines if needed
     if (_running_mask != _motor_mask) {
         configure_escs();
-        return; // do not send fast_throttle data if a configuration command just got sent
+        return; // do not send fast-throttle command if a configuration command just got sent
     }
 
     // get ESC set points
