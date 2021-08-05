@@ -675,6 +675,7 @@ void AP_FETtecOneWire::configure_escs()
         case ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE:
             // probe for bootloader or running firmware
             if (transmit_config_request(PackedMessage<OK>{esc.id, OK{}})) {
+                esc.is_awake = false; // Assume the ESC is asleep or unavailable
                 esc.set_state(ESCState::WAITING_OK_FOR_RUNNING_SW_TYPE);
             }
             return;
