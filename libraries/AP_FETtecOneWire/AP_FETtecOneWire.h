@@ -111,9 +111,9 @@ private:
     AP_Int8 _pole_count_parameter;
 #endif
 
-    static constexpr uint8_t FRAME_OVERHEAD = 6;
-    static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;
-    static constexpr uint8_t SERIAL_NUMBER_LENGTH = 12;
+    static constexpr uint8_t FRAME_OVERHEAD = 6;          ///< OneWire message frame overhead (header+tail bytes)
+    static constexpr uint8_t MAX_RECEIVE_LENGTH = 12;     ///< OneWire max receive message payload length in bytes
+    static constexpr uint8_t SERIAL_NUMBER_LENGTH = 12;   ///< ESC serial number length in bytes
 
     /**
         initialize the device driver: configure serial port, wake-up and configure ESCs
@@ -192,6 +192,7 @@ private:
     uint32_t _min_fast_throttle_period_us;  ///< minimum allowed fast_throttle command transmit period
     uint32_t _last_not_running_warning_ms;  ///< last time we warned the user their ESCs are stuffed
     int32_t _motor_mask;                    ///< an un-mutable copy of the _motor_mask_parameter taken before _init_done goes true
+    int32_t _reverse_mask;                  ///< a copy of the _reverse_mask_parameter taken while not armed
     int32_t _running_mask;                  ///< a bitmask of the actively running ESCs
     uint32_t _last_transmit_us;             ///< last time the transmit() function sent data
     ESC *_escs;

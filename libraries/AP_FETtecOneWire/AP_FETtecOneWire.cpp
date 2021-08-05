@@ -780,7 +780,7 @@ void AP_FETtecOneWire::update()
         }
         motor_pwm[i] = constrain_int16(c->get_output_pwm(), 1000, 2000);
         fet_debug("esc=%u in: %u", esc.id, motor_pwm[i]);
-        if (_reverse_mask_parameter & (1U << i)) {
+        if (_reverse_mask & (1U << i)) {
             motor_pwm[i] = 2000-motor_pwm[i];
         }
     }
@@ -790,6 +790,8 @@ void AP_FETtecOneWire::update()
 
 #if HAL_WITH_ESC_TELEM
     if (!hal.util->get_soft_armed()) {
+
+        _reverse_mask = _reverse_mask_parameter; // update this only when disarmed
 
         // if we haven't seen an ESC in a while, the user might
         // have power-cycled them.  Try re-initialising.
