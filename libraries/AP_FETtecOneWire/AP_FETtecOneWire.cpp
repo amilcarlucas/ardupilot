@@ -614,7 +614,7 @@ bool AP_FETtecOneWire::pre_arm_check(char *failure_msg, const uint8_t failure_ms
         return false;
     }
     if (_invalid_mask) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "Invalid motor mask; need consecutive bits only");
+        hal.util->snprintf(failure_msg, failure_msg_len, "Invalid motor mask");
         return false;
     }
 #if HAL_WITH_ESC_TELEM
