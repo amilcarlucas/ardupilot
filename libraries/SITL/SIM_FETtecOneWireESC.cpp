@@ -15,12 +15,12 @@
 /*
   Simulator for the FETtecOneWireESC
 
-  TODO: if we don't response to the second configuration message the driver does not currently reset
+  TODO:
  - verify the assertion that DMA is required
  - stop ignoring REQ_TYPE while in bootloader?
  - correct visibility of members in simulation
  - half-duplex will require the use of a thread as every time we call update() we expect to send out a configuration message
- - tidy break vs return oin AP_FETtec::handle_message
+ - tidy break vs return in AP_FETtec::handle_message
  - determine if we should have a "REQ_OK" as well as an "OK"
  - should rename simulated ESC "pwm" field to "value" or "fettec_value" or something
  - periodically log _unknown_esc_message, _message_invalid_in_state_count, _period_too_short, _receive_buf_used to dataflash using a low prio thread.
@@ -55,14 +55,14 @@ using namespace SITL;
 const AP_Param::GroupInfo FETtecOneWireESC::var_info[] = {
 
     // @Param: ENA
-    // @DisplayName: FETtecOneWireESC Generator sim enable/disable
+    // @DisplayName: FETtec OneWire ESC simulator enable/disable
     // @Description: Allows you to enable (1) or disable (0) the FETtecOneWireESC simulator
     // @Values: 0:Disabled,1:Enabled
     // @User: Advanced
     AP_GROUPINFO("ENA", 1, FETtecOneWireESC, _enabled, 0),
 
     // @Param: PWOF
-    // @DisplayName: Power off FETtech ESC mask
+    // @DisplayName: Power off FETtec ESC mask
     // @Description: Allows you to turn power off to the simulated ESCs.  Bits correspond to the ESC ID, *NOT* their servo channel.
     // @User: Advanced
     AP_GROUPINFO("POW", 2, FETtecOneWireESC, _powered_mask, 0xfff),
