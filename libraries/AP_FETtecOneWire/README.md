@@ -28,7 +28,7 @@ For purchase, connection and configuration information please see the [Ardupilot
   - check that the desired motor channels parameter (`SERVO_FWT_MASK`) is valid
   - check that the desired motor poles parameter (`SERVO_FWT_POLES`) is valid
   - check that the all desired ESCs are found and configured
-  - check that the ESCs are periodicaly sending telemetry data
+  - check that the ESCs are periodically sending telemetry data
 - re-enumerate all ESCs if not armed (motors not spinning) when
   - communication with one of the ESCs is lost
 - adds a serial simulator (--uartF=sim:fetteconewireesc) of FETtec OneWire ESCs
@@ -43,21 +43,6 @@ For purchase, connection and configuration information please see the [Ardupilot
 ## Ardupilot to ESC protocol
 
 The FETtec OneWire protocol supports up to 24 ESCs. As most copters only use at most 12 motors, Ardupilot's implementation supports only 12 (`ESC_TELEM_MAX_ESCS`)to save memory.
-
-The `SERVO_FTW_MASK` parameter selects which servo outputs, if any, will be routed to FETtec ESCs.
-You need to reboot after changing this parameter.
-When `HAL_WITH_ESC_TELEM` is active (default) only the first 12 (`ESC_TELEM_MAX_ESCS`) can be used.
-The FETtec ESC IDs set inside the FETtec firmware by the FETtec configuration tool are one-indexed.
-These IDs must start at ID 1 and be in a single contiguous block.
-You do not need to change these FETtec IDs if you change the servo output assignments inside ArduPilot the using the `SERVO_FTW_MASK` parameter
-
-The `SERVO_FTW_RVMASK` parameter selects which servo outputs, if any, will reverse their rotation.
-This parameter is only visible if the `SERVO_FTW_MASK` parameter has at least one bit set.
-This parameter effects the outputs immediately when changed and the motors are not armed.
-
-The `SERVO_FTW_POLES` parameter selects Number of motor electrical poles.
-It is used to calculate the motors RPM
-This parameter effects the RPM calculation immediately when changed.
 
 There are two types of messages sent to the ESCs configuration and fast-throttle messages:
 
@@ -119,7 +104,8 @@ See *ESC to Ardupilot Protocol* section below and comments in `FETtecOneWire.cpp
 Four ESCs need 90us for the fast-throttle request and telemetry reception. With four ESCs 11kHz update would be possible.
 Each additional ESC adds 11 extra fast-throttle command bits, so the update rate is lowered by each additional ESC.
 If you use 8 ESCs, it needs 160us including telemetry response, so 5.8kHz update rate would be possible.
-The FETtec Ardupilot device driver limits the update period to `_min_update_period_us` according to the number of ESCs used.
+The FETtec Ardupilot device driver limits the message transmit period to `_min_fast_throttle_period_us` according to the number of ESCs used.
+The update() function has an extra invocation period limit so that even at very high loop rates the the ESCs will still operate correctly albeit doing some decimation.
 The current update rate for Copter is 400Hz (~2500us) and for other vehicles is 50Hz (~20000us) so we are bellow device driver limit.
 
 **Note:** The FETtec ESCs firmware requires at least a 4Hz fast-throttle update rate (max. 250ms between messages) otherwise the FETtec ESC disarm (stop) the motors.
@@ -169,6 +155,24 @@ update()
     pack_fast_throttle_command()
     transmit()
 pre_arm_check()
+
+
+## Device driver parameters
+
+The `SERVO_FTW_MASK` parameter selects which servo outputs, if any, will be routed to FETtec ESCs.
+You need to reboot after changing this parameter.
+When `HAL_WITH_ESC_TELEM` is active (default) only the first 12 (`ESC_TELEM_MAX_ESCS`) can be used.
+The FETtec ESC IDs set inside the FETtec firmware by the FETtec configuration tool are one-indexed.
+These IDs must start at ID 1 and be in a single contiguous block.
+You do not need to change these FETtec IDs if you change the servo output assignments inside ArduPilot the using the `SERVO_FTW_MASK` parameter
+
+The `SERVO_FTW_RVMASK` parameter selects which servo outputs, if any, will reverse their rotation.
+This parameter is only visible if the `SERVO_FTW_MASK` parameter has at least one bit set.
+This parameter effects the outputs immediately when changed and the motors are not armed.
+
+The `SERVO_FTW_POLES` parameter selects Number of motor electrical poles.
+It is used to calculate the motors RPM
+This parameter effects the RPM calculation immediately when changed.
 
 ## Extra features
 
