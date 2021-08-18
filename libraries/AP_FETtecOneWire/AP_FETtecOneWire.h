@@ -21,7 +21,7 @@
 #include <AP_HAL/AP_HAL.h>
 
 #ifndef HAL_AP_FETTEC_ONEWIRE_ENABLED
-#define HAL_AP_FETTEC_ONEWIRE_ENABLED !HAL_MINIMIZE_FEATURES && !defined(HAL_BUILD_AP_PERIPH) && BOARD_FLASH_SIZE > 1024
+#define HAL_AP_FETTEC_ONEWIRE_ENABLED !HAL_MINIMIZE_FEATURES && !defined(HAL_BUILD_AP_PERIPH) && BOARD_FLASH_SIZE > 1024 && !defined(STM32F4)
 #endif
 
 // Support both full-duplex at 500Kbit/s as well as half-duplex at 2Mbit/s (optional feature)
