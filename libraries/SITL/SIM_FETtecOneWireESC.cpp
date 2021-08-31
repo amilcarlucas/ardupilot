@@ -498,6 +498,14 @@ void FETtecOneWireESC::send_esc_telemetry(const Aircraft &aircraft)
             esc.id,
             ESCTelem{temp_cdeg, voltage, current, rpm, consumption_mah, errcount}
         });
+
+        /**/
+        if (rpm >= 1260) {
+            ::fprintf(stderr, "*********************RPM %d\n", rpm);
+            //::fprintf("RPM %d\n", rpm);
+            //abort();
+        }
+        /**/
     }
 }
 
