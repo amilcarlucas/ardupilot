@@ -394,14 +394,14 @@ void AP_FETtecOneWire::handle_message(ESC &esc, const uint8_t length)
     case ESCState::RUNNING:
         // we only expect telemetry messages in this state
 #if HAL_WITH_ESC_TELEM
-        if (!esc.telem_expected) {
+        if (esc.id != _esc_id_telem_pending) {
             esc.unexpected_telem++;
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
             AP_HAL::panic("unexpected telemetry");
 #endif
             return;
         }
-        esc.telem_expected = false;
+        _esc_id_telem_pending = 0;
         return handle_message_telem(esc);
 #else
         return;
@@ -442,8 +442,6 @@ void AP_FETtecOneWire::handle_message_telem(ESC &esc)
           TelemetryType::VOLTAGE|
           TelemetryType::CURRENT|
           TelemetryType::CONSUMPTION);
-
-    esc.last_telem_us = AP_HAL::micros();
 }
 #endif  // HAL_WITH_ESC_TELEM
 
@@ -585,17 +583,16 @@ void AP_FETtecOneWire::pack_fast_throttle_command(const uint16_t *motor_values, 
 
 void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
 {
-    uint8_t esc_id_to_request_telem_from = 0;
 #if HAL_WITH_ESC_TELEM
-    ESC &esc_to_req_telem_from = _escs[_esc_ofs_to_request_telem_from++];
-    if (_esc_ofs_to_request_telem_from >= _esc_count) {
+    if (++_esc_ofs_to_request_telem_from >= _esc_count) {
         _esc_ofs_to_request_telem_from = 0;
     }
-    esc_id_to_request_telem_from = esc_to_req_telem_from.id;
+    ESC &esc_to_req_telem_from = _escs[_esc_ofs_to_request_telem_from];
+    _esc_id_telem_pending = esc_to_req_telem_from.id;
 #endif
 
     uint8_t fast_throttle_command[_fast_throttle_byte_count];
-    pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), esc_id_to_request_telem_from);
+    pack_fast_throttle_command(motor_values, fast_throttle_command, sizeof(fast_throttle_command), _esc_id_telem_pending);
 
 #if HAL_AP_FETTEC_HALF_DUPLEX
     // last byte of signal can be used to make sure the first TLM byte is correct, in case of spike corruption
@@ -610,8 +607,6 @@ void AP_FETtecOneWire::escs_set_values(const uint16_t* motor_values)
     // send throttle commands to all configured ESCs in a single packet transfer
     if (transmit(fast_throttle_command, sizeof(fast_throttle_command))) {
 #if HAL_WITH_ESC_TELEM
-        esc_to_req_telem_from.telem_expected = true;    // used to make sure that the returned telemetry comes from this ESC and not another
-        esc_to_req_telem_from.telem_requested = true;   // used to check if this ESC is periodically sending telemetry
         _fast_throttle_cmd_count++;
 #endif
     }
@@ -776,17 +771,20 @@ void AP_FETtecOneWire::update()
 
         // if we haven't seen an ESC in a while, the user might
         // have power-cycled them.  Try re-initialising.
-        for (uint8_t i=0; i<_esc_count; i++) {
-            auto &esc = _escs[i];
-            if (!esc.telem_requested || now - esc.last_telem_us < 1000000U ) {
-                // telem OK
-                continue;
+        if (_esc_id_telem_pending) {
+            _esc_id_telem_pending = 0;
+            auto &esc = _escs[_esc_ofs_to_request_telem_from];
+            if (_esc.consecutive_missing_telem > 3) {
+                _esc.consecutive_missing_telem = 0;
+                _running_mask &= ~(1 << esc.servo_ofs); // declare this ESC as un-configured
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "No telem from esc id=%u. Resetting it.", esc.id);
+                //GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "unknown %u, invalid %u, too short %u, unexpected: %u, crc_err %u", _unknown_esc_message, _message_invalid_in_state_count, _period_too_short, esc.unexpected_telem, crc_rec_err_cnt);
+                esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE);
             }
-            _running_mask &= ~(1 << esc.servo_ofs);
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "No telem from esc id=%u. Resetting it.", esc.id);
-            //GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "unknown %u, invalid %u, too short %u, unexpected: %u, crc_err %u", _unknown_esc_message, _message_invalid_in_state_count, _period_too_short, esc.unexpected_telem, crc_rec_err_cnt);
-            esc.set_state(ESCState::WANT_SEND_OK_TO_GET_RUNNING_SW_TYPE);
-            esc.telem_requested = false;
+            else
+            {
+                _esc.consecutive_missing_telem++;
+            }
         }
     }
 #endif  // HAL_WITH_ESC_TELEM

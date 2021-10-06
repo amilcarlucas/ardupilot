@@ -168,11 +168,9 @@ private:
     public:
 
 #if HAL_WITH_ESC_TELEM
-        uint32_t last_telem_us;              ///< last time we got telemetry from this ESC
         uint16_t unexpected_telem;
         uint16_t error_count_at_throttle_count_overflow;            ///< overflow counter for error counter from the ESCs.
-        bool telem_expected;                 ///< this ESC is fully configured and is now expected to send us telemetry
-        bool telem_requested;                ///< this ESC is fully configured and at some point was requested to send us telemetry
+        uint8_t consecutive_missing_telem;                 ///< nr of consecutive missing or invalid telemetry messages
 #endif
 
         uint8_t id;         ///< FETtec ESC ID
@@ -201,6 +199,9 @@ private:
     ESC *_escs;
     uint8_t _esc_count;                ///< number of allocated ESCs
     uint8_t _fast_throttle_byte_count; ///< pre-calculated number of bytes required to send an entire packed throttle message
+    /// ESC ID of pending (requested but not received yet) telemetry message
+    /// set to 0 if no telemetry is pending
+    uint8_t _esc_id_telem_pending;
 
 #if HAL_AP_FETTEC_HALF_DUPLEX
     uint8_t _ignore_own_bytes; ///< bytes to ignore while receiving, because we have transmitted them ourselves
