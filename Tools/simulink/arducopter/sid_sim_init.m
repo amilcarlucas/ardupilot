@@ -258,6 +258,7 @@ simIn.param.ATC.RATE_Y_MAX = getParamVal(sid, 'ATC_RATE_Y_MAX');
 simIn.param.ATC.ACCEL_Y_CONTROLLER_MAX_RADSS = single(120*pi/180); % Maximum body-frame acceleration limit for the stability controller, defined in AC_AttitudeControl.h
 simIn.param.ATC.ACCEL_Y_CONTROLLER_MIN_RADSS = single(10*pi/180);
 simIn.param.ATC.THRUST_ERROR_ANGLE = single(30*pi/180); % Thrust angle error above which yaw corrections are limited. Defined in AC_AttitudeControl.h
+simIn.param.ATC.YAW_MAX_ERROR_ANGLE = single(45*pi/180); % Thrust angle error above which yaw corrections are limited
 
 % Thrust and throttle calculation parameters
 simIn.param.MODE.THR_MAN_FLG = thr_man;    % Flag for manual throttle, which depends on the current mode. 
@@ -270,6 +271,7 @@ simIn.param.ATC.ANGLE_BOOST = getParamVal(sid, 'ATC_ANGLE_BOOST');   % Enabling 
 simIn.param.ATC.THR_MIX_MAN = getParamVal(sid, 'ATC_THR_MIX_MAN');   % Throttle vs. attitude priorisation during manual flight
 simIn.param.ATC.THR_MIX_MIN = getParamVal(sid, 'ATC_THR_MIX_MIN');   % Throttle vs. attitude priorisation used when landing
 simIn.param.ATC.THR_MIX_MAX = getParamVal(sid, 'ATC_THR_MIX_MAX');   % Throttle vs. attitude priorisation during active flights
+simIn.param.ATC.THR_G_BOOST = getParamVal(sid, 'ATC_THR_G_BOOST');   % Throttle-gain boost ratio. A value of 0 means no boosting is applied, a value of 1 means full boosting is applied. Describes the ratio increase that is applied to angle P and PD on pitch and roll.
 simIn.param.ATC.THR_MIX_DFLT = single(0.5); % Default value for the priorization of throttle use between attitude control and throttle demand by pilot (or autopilot). Defined in AC_AttitudeControl.h, line 44 
 if thr_man
     simIn.init.ATC.THR_MIX = simIn.param.ATC.THR_MIX_MAN;
@@ -402,6 +404,9 @@ else
     simIn.signals.SIDD.GyrZ = single(zeros(length(simIn.signals.SIDD.Time{1}),1));
 end
 
+% PID Notch Filter
+simIn.param.FiltEnabled = 1;
+
 %% Roll Rate Controller
 iVec = (sid.PIDR.TimeS >= tStart & sid.PIDR.TimeS <= tEnd);
 simIn.signals.PIDR.Time = single(sid.PIDR.TimeS(iVec)-tStart);
@@ -435,7 +440,9 @@ simIn.param.PIDR.P = getParamVal(sid, 'ATC_RAT_RLL_P');
 simIn.param.PIDR.I = getParamVal(sid, 'ATC_RAT_RLL_I');
 simIn.param.PIDR.D = getParamVal(sid, 'ATC_RAT_RLL_D');
 simIn.param.PIDR.IMAX = getParamVal(sid, 'ATC_RAT_RLL_IMAX');
+simIn.param.PIDR.PDMX = getParamVal(sid, 'ATC_RAT_RLL_PDMX');
 simIn.param.PIDR.FF = getParamVal(sid, 'ATC_RAT_RLL_FF'); %0.05;
+simIn.param.PIDR.DFF = getParamVal(sid, 'ATC_RAT_RLL_D_FF');
 simIn.param.PIDR.SR_MAX = getParamVal(sid, 'ATC_RAT_RLL_SMAX'); %5.0;
 simIn.param.PIDR.SR_TAU = single(1.0); % Slew Rate Tau - not yet available as a parameter of the copter. Set to 1.0 by default (AC_PID.h, line 24).
 simIn.param.PIDR.SR_FLT_f = single(25.0);  % Slew Rate lowpass filter cutoff frequency. Defined in SlewLimiter.h, line 14.
@@ -498,7 +505,9 @@ simIn.param.PIDP.P = getParamVal(sid, 'ATC_RAT_PIT_P');
 simIn.param.PIDP.I = getParamVal(sid, 'ATC_RAT_PIT_I');
 simIn.param.PIDP.D = getParamVal(sid, 'ATC_RAT_PIT_D');
 simIn.param.PIDP.IMAX = getParamVal(sid, 'ATC_RAT_PIT_IMAX');
+simIn.param.PIDP.PDMX = getParamVal(sid, 'ATC_RAT_PTT_PDMX');
 simIn.param.PIDP.FF = getParamVal(sid, 'ATC_RAT_PIT_FF');
+simIn.param.PIDP.DFF = getParamVal(sid, 'ATC_RAT_PIT_D_FF');
 simIn.param.PIDP.SR_MAX = getParamVal(sid, 'ATC_RAT_PIT_SMAX');
 simIn.param.PIDP.SR_TAU = single(1.0); % Slew Rate Tau - not yet available as a parameter of the copter. Set to 1.0 by default (AC_PID.h, line 24).
 simIn.param.PIDP.SR_FLT_f = single(25.0);  % Slew Rate lowpass filter cutoff frequency. Defined in SlewLimiter.h, line 14.
@@ -561,7 +570,9 @@ simIn.param.PIDY.P = getParamVal(sid, 'ATC_RAT_YAW_P');
 simIn.param.PIDY.I = getParamVal(sid, 'ATC_RAT_YAW_I');
 simIn.param.PIDY.D = getParamVal(sid, 'ATC_RAT_YAW_D');
 simIn.param.PIDY.IMAX = getParamVal(sid, 'ATC_RAT_YAW_IMAX');
+simIn.param.PIDY.PDMX = getParamVal(sid, 'ATC_RAT_YAW_PDMX');
 simIn.param.PIDY.FF = getParamVal(sid, 'ATC_RAT_YAW_FF');
+simIn.param.PIDY.DFF = getParamVal(sid, 'ATC_RAT_YAW_D_FF');
 simIn.param.PIDY.SR_MAX = getParamVal(sid, 'ATC_RAT_YAW_SMAX');
 simIn.param.PIDY.SR_TAU = single(1.0); % Slew Rate Tau - not yet available as a parameter of the copter. Set to 1.0 by default (AC_PID.h, line 24).
 simIn.param.PIDY.SR_FLT_f = single(25.0);  % Slew Rate lowpass filter cutoff frequency. Defined in SlewLimiter.h, line 14.
@@ -665,7 +676,9 @@ simIn.param.PIDA.P = getParamVal(sid, 'PSC_ACCZ_P'); % P gain of the vertical ac
 simIn.param.PIDA.I = getParamVal(sid, 'PSC_ACCZ_I'); % I gain of the vertical acceleration controller
 simIn.param.PIDA.D = getParamVal(sid, 'PSC_ACCZ_D'); % D gain of the vertical acceleration controller
 simIn.param.PIDA.IMAX = getParamVal(sid, 'PSC_ACCZ_IMAX'); % I gain maximu vertical acceleration controller
+simIn.param.PIDA.PDMX = getParamVal(sid, 'ATC_RAT_ACCZ_PDMX');
 simIn.param.PIDA.FF = getParamVal(sid, 'PSC_ACCZ_FF'); % Feed Forward gain of the vertical acceleration controller
+simIn.param.PIDA.DFF = getParamVal(sid, 'ATC_RAT_ACCZ_D_FF'); % Derivative Feed Forward gain of the vertical acceleration controller
 simIn.param.PIDA.FLTE_f = getParamVal(sid, 'PSC_ACCZ_FLTE'); % Cutoff frequency of the error filter (in Hz)
 simIn.param.PIDA.FLTD_f = getParamVal(sid, 'PSC_ACCZ_FLTD'); % Cutoff frequency of the D term filter (in Hz)
 simIn.param.PIDA.FLTT_f = getParamVal(sid, 'PSC_ACCZ_FLTT'); % Cutoff frequency of the target filter (in Hz)
